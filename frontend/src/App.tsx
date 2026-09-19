@@ -1,14 +1,26 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { AlignLeft, ArrowUp, CirclePlus, Mic } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { AlignLeft, ArrowUp, CirclePlus, Mic, X } from 'lucide-react'
+import logoMark from './assets/logo-mark.svg'
 import './App.css'
 
 type ConnectionStatus = 'checking' | 'connected' | 'disconnected'
 
+const MAX_REFERENCE_IMAGES = 3
+
+interface ReferenceImageSlot {
+  file: File
+  previewUrl: string
+}
+
 function App() {
+  const navigate = useNavigate()
   const [status, setStatus] = useState<ConnectionStatus>('checking')
-  const [query, setQuery] = useState('')
-  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const [targetText, setTargetText] = useState('')
+  const [images, setImages] = useState<ReferenceImageSlot[]>([])
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetch('/api/health')
@@ -16,6 +28,53 @@ function App() {
       .then((data) => setStatus(data.status === 'ok' ? 'connected' : 'disconnected'))
       .catch(() => setStatus('disconnected'))
   }, [])
+
+  const remainingSlots = MAX_REFERENCE_IMAGES - images.length
+
+  const handleAddPhotoClick = () => {
+    if (remainingSlots <= 0) return
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []).slice(0, remainingSlots)
+    e.target.value = ''
+    if (files.length === 0) return
+    setImages((prev) => [...prev, ...files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))])
+  }
+
+  const handleRemoveImage = (index: number) => {
+    setImages((prev) => {
+      URL.revokeObjectURL(prev[index].previewUrl)
+      return prev.filter((_, i) => i !== index)
+    })
+  }
+
+  const submitSearch = async () => {
+    const text = targetText.trim()
+    if (!text || submitting) return
+
+    setSubmitting(true)
+    setError(null)
+    try {
+      const formData = new FormData()
+      formData.append('target_text', text)
+      images.forEach((img) => formData.append('reference_images', img.file))
+
+      const res = await fetch('/api/searches', { method: 'POST', body: formData })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.detail ?? 'Failed to start search')
+      }
+      const data = await res.json()
+      navigate(`/search/${data.search_id}`, {
+        state: { targetText: data.target_text, previewUrl: images[0]?.previewUrl },
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start search')
+      setSubmitting(false)
+    }
+  }
 
   return (
     <main className="home">
@@ -30,28 +89,68 @@ function App() {
       </Link>
 
       <div className="home__center">
+        <img src={logoMark} alt="" className="home__logo" />
         <h1 className="home__title">Patch</h1>
-        <p className="home__subtitle">what are we looking for today?</p>
+        <p className="home__subtitle">What are we looking for today?</p>
       </div>
 
       <form
         className="search-bar"
         onSubmit={(e) => {
           e.preventDefault()
+          submitSearch()
         }}
       >
         <textarea
-          ref={inputRef}
           className="search-bar__input"
           placeholder="i'm looking for my...."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          value={targetText}
+          onChange={(e) => setTargetText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              submitSearch()
+            }
+          }}
           rows={1}
         />
+
+        {images.length > 0 && (
+          <div className="reference-preview">
+            {images.map((img, index) => (
+              <div key={img.previewUrl} className="reference-preview__item">
+                <img src={img.previewUrl} alt="" />
+                <button
+                  type="button"
+                  className="reference-preview__remove"
+                  onClick={() => handleRemoveImage(index)}
+                  aria-label="Remove photo"
+                >
+                  <X size={12} color="white" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="search-bar__actions">
-          <button type="button" className="icon-button icon-button--plus" aria-label="Add reference photo">
+          <button
+            type="button"
+            className="icon-button icon-button--plus"
+            aria-label="Add reference photo"
+            onClick={handleAddPhotoClick}
+            disabled={remainingSlots <= 0}
+          >
             <CirclePlus size={45} strokeWidth={1.5} />
           </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="visually-hidden"
+            onChange={handleFileChange}
+          />
           <div className="search-bar__actions-right">
             <button
               type="button"
@@ -66,13 +165,15 @@ function App() {
               type="submit"
               className="icon-button icon-button--circle"
               aria-label="Search"
-              disabled={query.trim().length === 0}
+              disabled={targetText.trim().length === 0 || submitting}
             >
               <ArrowUp size={24} color="white" strokeWidth={1.875} />
             </button>
           </div>
         </div>
       </form>
+
+      {error && <p className="form-error">{error}</p>}
     </main>
   )
 }

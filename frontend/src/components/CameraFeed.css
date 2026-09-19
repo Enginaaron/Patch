@@ -25,3 +25,10 @@
   padding: 16px;
   box-sizing: border-box;
 }
+
+.camera-feed--full {
+  width: 100vw;
+  height: 100svh;
+  aspect-ratio: unset;
+  border-radius: 0;
+}

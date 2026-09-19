@@ -5,13 +5,14 @@ type FeedStatus = 'loading' | 'loaded' | 'error'
 
 interface CameraFeedProps {
   src?: string
+  className?: string
 }
 
-function CameraFeed({ src = '/video' }: CameraFeedProps) {
+function CameraFeed({ src = '/video', className = '' }: CameraFeedProps) {
   const [status, setStatus] = useState<FeedStatus>('loading')
 
   return (
-    <div className="camera-feed">
+    <div className={`camera-feed ${className}`.trim()}>
       {status !== 'loaded' && (
         <div className="camera-feed__overlay">
           {status === 'loading' ? 'Connecting to camera…' : 'Camera unavailable'}

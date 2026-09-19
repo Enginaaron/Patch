@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.db import init_db
+from app.routers.searches import router as searches_router
 from app.services.camera_service import camera_service
 
 
@@ -28,6 +29,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(searches_router)
 
 
 @app.get("/api/health")

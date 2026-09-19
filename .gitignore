@@ -4,6 +4,9 @@ backend/__pycache__/
 backend/**/__pycache__/
 backend/.env
 backend/data/*.db
+backend/data/items/
+backend/data/searches/
+backend/data/finds/
 
 # frontend
 frontend/node_modules/

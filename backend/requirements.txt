@@ -4,3 +4,5 @@ pydantic-settings
 sqlmodel
 opencv-python
 numpy
+pillow
+python-multipart
