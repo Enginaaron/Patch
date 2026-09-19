@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+sqlmodel
+opencv-python
+numpy
