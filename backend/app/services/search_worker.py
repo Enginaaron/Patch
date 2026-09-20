@@ -16,6 +16,7 @@ from app.db import get_session
 from app.models import Candidate, CandidateDecision, ReferenceImage, Search, SearchStatus
 from app.services.bbox import crop_to_box
 from app.services.camera_service import camera_service
+from app.services.event_bus import event_bus
 from app.services.omni_vision import DetectionResult, detect_personalized, detect_text_only
 from app.services.yolo_detector import detect_class, match_coco_class, set_tracking_box
 
@@ -235,8 +236,12 @@ class SearchWorker:
                 result = detect_personalized(target_text, reference_bytes, scene_jpeg)
             else:
                 result = detect_text_only(target_text, scene_jpeg)
-        except Exception:
+        except Exception as exc:
             logger.exception("OMNI detection call failed for search %s", self.search_id)
+            event_bus.publish(
+                self.search_id,
+                {"type": "vision_error", "payload": {"message": str(exc)}},
+            )
             return False
 
         self._call_count += 1
@@ -310,4 +315,22 @@ class SearchWorker:
             session.add(search)
             session.commit()
 
+            # session.commit() expires ORM attributes -- capture what we need
+            # for the event payload while still inside the session, same fix
+            # as the identical DetachedInstanceError hit in Spec 5.
+            candidate_id = candidate.id
+
         logger.info("search %s: candidate created, status -> CANDIDATE_PENDING", self.search_id)
+        event_bus.publish(
+            self.search_id,
+            {
+                "type": "candidate_found",
+                "payload": {
+                    "candidate_id": candidate_id,
+                    "image_url": f"/media/{full_path}",
+                    "crop_url": f"/media/{crop_path}",
+                    "box": box_2d,
+                    "description": result.detection.description,
+                },
+            },
+        )

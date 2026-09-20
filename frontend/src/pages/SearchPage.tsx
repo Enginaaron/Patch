@@ -61,6 +61,27 @@ function SearchPage() {
     }
   }, [searchId])
 
+  // Spec 13: candidate detection and status changes appear without a manual
+  // refresh. Every event is treated purely as a "something changed, go
+  // refetch" signal rather than a payload to merge into state directly --
+  // status stays sourced from GET /api/searches/{id} alone (Spec 6), SSE
+  // just tells us when to ask again.
+  useEffect(() => {
+    if (!searchId) return
+
+    const source = new EventSource(`/api/searches/${searchId}/events`)
+    source.onmessage = () => {
+      fetch(`/api/searches/${searchId}`)
+        .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+        .then((data: SearchDetail) => setSearch(data))
+        .catch(() => {})
+    }
+
+    return () => {
+      source.close()
+    }
+  }, [searchId])
+
   const handleCancel = async () => {
     if (!searchId || cancelling) return
     setCancelling(true)
