@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
-import { dayLabel, formatTime } from '../utils/datetime'
+import { ArrowLeft, Search } from 'lucide-react'
+import { formatTime } from '../utils/datetime'
 import './MemoryPage.css'
 
 interface FindListItem {
@@ -13,31 +13,13 @@ interface FindListItem {
   found_at: string
 }
 
-interface FindGroup {
-  label: string
-  items: FindListItem[]
-}
-
 type LoadState = 'loading' | 'loaded' | 'error'
-
-function groupByDay(finds: FindListItem[]): FindGroup[] {
-  const groups: FindGroup[] = []
-  for (const find of finds) {
-    const label = dayLabel(find.found_at)
-    const current = groups[groups.length - 1]
-    if (current && current.label === label) {
-      current.items.push(find)
-    } else {
-      groups.push({ label, items: [find] })
-    }
-  }
-  return groups
-}
 
 function MemoryPage() {
   const navigate = useNavigate()
   const [finds, setFinds] = useState<FindListItem[]>([])
   const [loadState, setLoadState] = useState<LoadState>('loading')
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -56,7 +38,9 @@ function MemoryPage() {
     }
   }, [])
 
-  const groups = groupByDay(finds)
+  const filteredFinds = finds.filter((find) =>
+    find.item_name.toLowerCase().includes(query.trim().toLowerCase()),
+  )
 
   return (
     <main className="memory">
@@ -64,30 +48,45 @@ function MemoryPage() {
         <ArrowLeft size={20} color="white" strokeWidth={2} />
       </button>
 
-      <h1 className="memory__title">MEMORY</h1>
+      <header className="memory__header">
+        <h1 className="memory__title">Memory</h1>
+        <div className="memory__view-toggle" aria-label="View mode">
+          <span>grid</span>
+          <span className="memory__view-toggle-muted"> / list</span>
+        </div>
+      </header>
+
+      <label className="memory__search">
+        <Search size={24} strokeWidth={2} aria-hidden="true" />
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="search"
+          aria-label="Search memory"
+        />
+      </label>
 
       {loadState === 'loading' && <p className="memory__notice">Loading…</p>}
       {loadState === 'error' && <p className="memory__notice">Couldn't load memory.</p>}
-      {loadState === 'loaded' && finds.length === 0 && (
+      {loadState === 'loaded' && filteredFinds.length === 0 && (
         <p className="memory__notice">Nothing found yet.</p>
       )}
 
-      {groups.map((group) => (
-        <section key={group.label} className="memory__group">
-          <h2 className="memory__group-label">{group.label}</h2>
-          <ul className="memory__list">
-            {group.items.map((find) => (
-              <li key={find.find_id}>
-                <Link to={`/items/${find.item_id}`} className="memory__row">
-                  <img src={find.crop_url} alt="" className="memory__row-photo" />
-                  <span className="memory__row-name">{find.item_name}</span>
-                  <span className="memory__row-time">{formatTime(find.found_at)}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+      {filteredFinds.length > 0 && (
+        <ul className="memory__grid">
+          {filteredFinds.map((find) => (
+            <li key={find.find_id}>
+              <Link to={`/items/${find.item_id}`} className="memory__card">
+                <img src={find.crop_url} alt="" className="memory__card-photo" />
+                <span className="memory__card-caption">
+                  {formatTime(find.found_at)} - {find.item_name}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </main>
   )
 }
