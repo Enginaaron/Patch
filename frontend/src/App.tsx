@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { AlignLeft, ArrowUp, CirclePlus, Mic, X } from 'lucide-react'
-import logoMark from './assets/logo-mark.svg'
+import { AlignLeft, ArrowUp, Mic, Plus, X } from 'lucide-react'
+import logoMark from './assets/patchlogo.png'
 import useVoice from './hooks/useVoice'
 import { readApiError } from './lib/searchTypes'
 import './App.css'
@@ -161,7 +161,7 @@ function App() {
       >
         <textarea
           className="search-bar__input"
-          placeholder="i'm looking for my...."
+          placeholder="I’m looking for my..."
           value={targetText}
           onChange={(e) => updateTargetText(e.target.value)}
           onKeyDown={(e) => {
@@ -199,7 +199,7 @@ function App() {
             onClick={handleAddPhotoClick}
             disabled={remainingSlots <= 0}
           >
-            <CirclePlus size={45} strokeWidth={1.5} />
+              <Plus size={24} strokeWidth={1.875} />
           </button>
           <input
             ref={fileInputRef}
