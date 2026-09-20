@@ -414,3 +414,27 @@ def test_malformed_crop_checks_fail_closed(monkeypatch, reply):
     monkeypatch.setattr(omni_vision, "_client", lambda: client)
     with pytest.raises(ValueError):
         detect_text_only("phone", SCENE)
+
+
+@pytest.mark.parametrize("metadata", [{}, {"likelihood": None}, {"likelihood": 0},
+                                     {"likelihood": "low", "description": None}])
+def test_explicit_absence_accepts_empty_metadata(monkeypatch, metadata):
+    client = FakeClient(json.dumps({"found": False, "bbox_2d": None, **metadata}))
+    monkeypatch.setattr(omni_vision, "_client", lambda: client)
+    result = detect_text_only("white water bottle", SCENE).detection
+    assert result.found is False and result.box_2d is None
+    assert result.likelihood == "low" and result.description
+    assert len(client.requests) == 1
+
+
+@pytest.mark.parametrize("payload", [
+    {"found": True, "bbox_2d": None},
+    {"found": "false", "bbox_2d": None},
+    {"found": False},
+    {"found": False, "bbox_2d": [10, 10, 100, 100]},
+    {"found": False, "bbox_2d": None, "likelihood": "unknown"},
+])
+def test_absence_normalization_does_not_hide_invalid_results(monkeypatch, payload):
+    monkeypatch.setattr(omni_vision, "_client", lambda: FakeClient(json.dumps(payload)))
+    with pytest.raises(ValueError):
+        detect_text_only("white water bottle", SCENE)

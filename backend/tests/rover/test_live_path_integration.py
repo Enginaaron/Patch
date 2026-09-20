@@ -49,6 +49,24 @@ class _NoLocalDetector:
         return False
 
 
+def test_absent_target_with_null_metadata_rotates_through_scan_budget(harness, monkeypatch):
+    # Reproduce the Pi's real negative responses through the complete adapter,
+    # without a local detector. The wheels must rotate, never move forward.
+    from tests.test_omni_vision_prompt import FakeClient
+    client = FakeClient('{"found": false, "bbox_2d": null, "likelihood": null, "description": null}')
+    monkeypatch.setattr(omni_vision, "_client", lambda: client)
+    monkeypatch.setattr(settings, "omni_api_key", "test-only-fake-client")
+    cfg = fast_config(scan_max_steps=3, local_detection_enabled=False)
+    h = harness(cfg, vision=LiveVision(cfg, detector=_NoLocalDetector()))
+    sid, log = h.search("white water bottle")
+    h.controller.start_search(sid)
+    end = log.wait_rest()
+    assert end["payload"]["reason"] == "scan_budget"
+    assert [move.command for move in h.drive.moves] == ["turn_right"] * 3
+    assert h.drive.records[-1].command == "stop"
+    assert not log.of_type("vision_error")
+
+
 class _FakeGateway:
     """Stands in for ``omni_vision._call``. Like the real model it sees only
     the prompt it is sent: it honours the REJECTED descriptions listed there,

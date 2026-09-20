@@ -65,6 +65,21 @@ class _ModelDetection(BaseModel):
     bbox_2d: list[StrictInt] | None
     description: str
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_absent_target(cls, data):
+        # The gateway sometimes omits metadata for an explicit negative result.
+        # Only that unambiguous case can authorize continuing the scan: never
+        # coerce truthy strings, positive detections, or contradictory boxes.
+        if isinstance(data, dict) and data.get("found") is False and "bbox_2d" in data and data["bbox_2d"] is None:
+            data = dict(data)
+            confidence = data.get("likelihood")
+            if confidence is None or (type(confidence) in (int, float) and confidence == 0):
+                data["likelihood"] = "low"
+            if data.get("description") is None:
+                data["description"] = "Target is not visible in this view"
+        return data
+
     def to_detection(self) -> SearchDetection:
         box = self.bbox_2d
         if box is not None:
