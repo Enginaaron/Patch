@@ -11,5 +11,9 @@ class Settings(BaseSettings):
     media_root: str = "./data"
     ai_sample_interval_seconds: float = 1.25
 
+    omni_api_key: str = ""
+    omni_base_url: str = "https://yibuapi.com/v1"
+    omni_model: str = "qwen3.5-omni-plus"
+
 
 settings = Settings()

@@ -19,11 +19,15 @@ interface SearchDetail {
 type LoadState = 'loading' | 'loaded' | 'not_found' | 'error'
 
 const STATUS_LABEL: Record<string, string> = {
-  SEARCHING: 'Searching…',
-  CANDIDATE_PENDING: 'Reviewing a match…',
+  SEARCHING: 'Searching',
+  CANDIDATE_PENDING: 'Reviewing a match',
   FOUND: 'Found',
   CANCELLED: 'Cancelled',
 }
+
+// Statuses where the AI loop is actively working -- these get the "thinking"
+// dots. FOUND/CANCELLED are terminal, so they stay static.
+const ACTIVE_STATUSES = new Set(['SEARCHING', 'CANDIDATE_PENDING'])
 
 function SearchPage() {
   const navigate = useNavigate()
@@ -113,9 +117,18 @@ function SearchPage() {
             <div className="live-screen__card">
               <div className="live-screen__status">
                 <span
-                  className={`live-screen__status-dot live-screen__status-dot--${search.status.toLowerCase()}`}
+                  className={`live-screen__status-dot live-screen__status-dot--${search.status.toLowerCase()}${
+                    ACTIVE_STATUSES.has(search.status) ? ' live-screen__status-dot--active' : ''
+                  }`}
                 />
                 {statusLabel}
+                {ACTIVE_STATUSES.has(search.status) && (
+                  <span className="live-screen__status-thinking" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                )}
               </div>
 
               <p className="live-screen__label">You're looking for:</p>

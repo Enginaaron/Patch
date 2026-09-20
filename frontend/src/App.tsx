@@ -163,7 +163,7 @@ function App() {
               type="submit"
               className="icon-button icon-button--circle"
               aria-label="Search"
-              disabled={targetText.trim().length === 0 || submitting}
+              disabled={submitting}
             >
               <ArrowUp size={24} color="white" strokeWidth={1.875} />
             </button>
