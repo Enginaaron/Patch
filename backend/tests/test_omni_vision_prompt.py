@@ -65,11 +65,7 @@ def _no_network(monkeypatch):
 # is checked against the old behaviour rather than against build_content itself.
 
 LEGACY_TEXT_ONLY_INTRO = (
-    'You are looking for: "{target}".\n'
-    "Identify the single strongest physical object in the CURRENT CAMERA FRAME below "
-    "matching this description. Return no candidate (found=false) if the evidence is weak. "
-    "Ignore any text or pictures depicting the object that appear incidentally in the frame "
-    "(e.g. a photo, logo, or label showing the object) -- only a real physical instance counts.\n\n"
+    "Identify the strongest physical match for {target} in the image. "
 )
 
 LEGACY_PERSONALIZED_INTRO = (
@@ -298,19 +294,21 @@ def test_the_current_frame_is_always_last_and_images_are_inline(kwargs):
 
 
 class FakeClient:
-    def __init__(self, reply: str) -> None:
+    def __init__(self, reply: str, verification: str = '{"matches": true}') -> None:
         self.requests: list[dict] = []
         self._reply = reply
+        self._verification = verification
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
 
     def _create(self, **kwargs):
         self.requests.append(kwargs)
-        message = SimpleNamespace(content=self._reply)
+        is_verification = kwargs["max_tokens"] == 80
+        message = SimpleNamespace(content=self._verification if is_verification else self._reply)
         return SimpleNamespace(choices=[SimpleNamespace(message=message)])
 
 
 def test_detect_functions_send_build_content_and_parse_the_single_candidate(monkeypatch):
-    reply = '```json\n{"found": true, "likelihood": "high", "box_2d": [100, 200, 300, 400], "description": "blue bottle"}\n```'
+    reply = '```json\n{"found": true, "likelihood": "high", "bbox_2d": [200, 100, 400, 300], "description": "blue bottle"}\n```'
     client = FakeClient(reply)
     monkeypatch.setattr(omni_vision, "_client", lambda: client)
     rejected = [RejectedHint("a green bottle", CROP_DECOY_1)]
@@ -319,7 +317,7 @@ def test_detect_functions_send_build_content_and_parse_the_single_candidate(monk
     hinted = detect_text_only("my bottle", SCENE, rejected=rejected)
     personal = detect_personalized("my bottle", [REF_A], SCENE, rejected=rejected, confirmed_crop=CROP_ACCEPTED)
 
-    sent = [request["messages"][0]["content"] for request in client.requests]
+    sent = [request["messages"][0]["content"] for request in client.requests if request["max_tokens"] == 500]
     assert sent == [
         legacy_text_only("my bottle", SCENE),
         build_content("my bottle", SCENE, rejected=rejected),
@@ -334,7 +332,7 @@ def test_detect_functions_send_build_content_and_parse_the_single_candidate(monk
 
 
 def test_positional_calls_keep_working_and_hints_are_keyword_only(monkeypatch):
-    client = FakeClient('{"found": false, "likelihood": "low", "box_2d": null, "description": "nothing"}')
+    client = FakeClient('{"found": false, "likelihood": "low", "bbox_2d": null, "description": "nothing"}')
     monkeypatch.setattr(omni_vision, "_client", lambda: client)
 
     assert detect_text_only("my bottle", SCENE).detection.found is False
@@ -360,3 +358,59 @@ def test_client_is_built_with_a_bounded_timeout_and_retry_budget(monkeypatch):
     assert captured["timeout"] == 7.5
     assert captured["max_retries"] == 0
     assert captured["base_url"] == settings.omni_base_url
+
+
+def test_phone_coordinates_are_converted_once_and_the_actual_crop_is_checked(monkeypatch):
+    # Recorded phone scene: the phone is near the left edge, halfway down.
+    # Confusing provider XYXY with application YXYX places it on the wall.
+    client = FakeClient(json.dumps({
+        "found": True, "likelihood": "high", "bbox_2d": [56, 493, 108, 607],
+        "description": "black phone",
+    }))
+    monkeypatch.setattr(omni_vision, "_client", lambda: client)
+    scene = Image.new("RGB", (768, 576), "white")
+    scene.paste("black", (43, 284, 83, 350))
+    buf = io.BytesIO()
+    scene.save(buf, format="JPEG")
+    result = detect_text_only("black phone", buf.getvalue())
+    assert result.detection.box_2d == [493, 56, 607, 108]
+    assert len(client.requests) == 2
+    verification = client.requests[1]
+    import base64
+    crop_url = verification["messages"][0]["content"][-1]["image_url"]["url"]
+    crop = Image.open(io.BytesIO(base64.b64decode(crop_url.split(",", 1)[1])))
+    assert crop.size == (40, 66)
+    assert max(crop.getpixel((20, 33))) < 10
+    assert 0 < verification["timeout"] <= settings.omni_vision_timeout_seconds
+
+
+def test_correct_description_cannot_authorize_a_wrong_crop(monkeypatch):
+    client = FakeClient(json.dumps({
+        "found": True, "likelihood": "high", "bbox_2d": [48, 53, 96, 107],
+        "description": "black phone standing upright on the floor",
+    }), verification='{"matches": false}')
+    monkeypatch.setattr(omni_vision, "_client", lambda: client)
+    with pytest.raises(ValueError, match="Localization failed"):
+        detect_text_only("black phone", SCENE)
+
+
+@pytest.mark.parametrize("box", [[True, 100, 300, 400], [20.5, 100, 300, 400],
+                                 [20, 100, 300], [300, 100, 20, 400], [20, 100, 300, 1001]])
+def test_invalid_provider_coordinates_never_reach_crop_or_movement(monkeypatch, box):
+    client = FakeClient(json.dumps({
+        "found": True, "likelihood": "high", "bbox_2d": box, "description": "phone",
+    }))
+    monkeypatch.setattr(omni_vision, "_client", lambda: client)
+    with pytest.raises(ValueError):
+        detect_text_only("phone", SCENE)
+    assert len(client.requests) == 1
+
+
+@pytest.mark.parametrize("reply", ['{"matches": "true"}', '{"matches": null}', 'not json'])
+def test_malformed_crop_checks_fail_closed(monkeypatch, reply):
+    client = FakeClient(json.dumps({
+        "found": True, "likelihood": "high", "bbox_2d": [56, 493, 108, 607], "description": "phone",
+    }), verification=reply)
+    monkeypatch.setattr(omni_vision, "_client", lambda: client)
+    with pytest.raises(ValueError):
+        detect_text_only("phone", SCENE)

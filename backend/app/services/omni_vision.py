@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Literal
 from openai import OpenAI
 from PIL import ImageOps
 from PIL import Image as PILImage
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt, model_validator
 
 from app.config import settings
 
@@ -56,15 +56,40 @@ class DetectionResult:
     latency_seconds: float
 
 
+class _ModelDetection(BaseModel):
+    """Provider coordinates are XYXY; the application's Box remains YXYX."""
+
+    model_config = ConfigDict(extra="forbid")
+    found: StrictBool
+    likelihood: Literal["low", "medium", "high"]
+    bbox_2d: list[StrictInt] | None
+    description: str
+
+    def to_detection(self) -> SearchDetection:
+        box = self.bbox_2d
+        if box is not None:
+            if len(box) != 4:
+                raise ValueError("bbox_2d must contain four XYXY coordinates")
+            xmin, ymin, xmax, ymax = box
+            box = [ymin, xmin, ymax, xmax]
+        return SearchDetection(
+            found=self.found, likelihood=self.likelihood,
+            box_2d=box, description=self.description,
+        )
+
+
+class _CropCheck(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    matches: StrictBool
+
+
 RESPONSE_INSTRUCTIONS = (
-    "Respond with ONLY a single JSON object. No markdown formatting, no code fences, "
-    "no explanation before or after it. The object must have exactly these fields:\n"
-    '{"found": true or false, '
-    '"likelihood": "low", "medium", or "high", '
-    '"box_2d": [ymin, xmin, ymax, xmax] on a 0-1000 integer scale, or null, '
-    '"description": a short description of what you found or why nothing matched}\n'
-    "box_2d must be null when found is false. When found is true and you provide box_2d, "
-    "it must have exactly 4 integers in [0, 1000] with ymin < ymax and xmin < xmax."
+    'Respond with ONLY JSON: {"found":true,"likelihood":"high",'
+    '"bbox_2d":[x_min,y_min,x_max,y_max],"description":"short description"}. '
+    "bbox_2d is in x/y order with integer coordinates normalized to 0..1000 across the FULL image. "
+    "x is horizontal, y is vertical. Top-left is (0,0), bottom-right is (1000,1000). "
+    "Halfway down the image is y=500. Use a tight box around the object only. "
+    "If absent use found=false and bbox_2d=null. If location is uncertain use bbox_2d=null."
 )
 
 
@@ -113,7 +138,7 @@ def _extract_json(text: str) -> dict:
     return json.loads(match.group(0))
 
 
-def _call(content: list[dict]) -> DetectionResult:
+def _call(content: list[dict], *, target_text: str) -> DetectionResult:
     client = _client()
     start = time.monotonic()
     response = client.chat.completions.create(
@@ -122,12 +147,46 @@ def _call(content: list[dict]) -> DetectionResult:
         max_tokens=500,
         temperature=0.1,
     )
-    latency_seconds = time.monotonic() - start
-    logger.info("OMNI call took %.2fs (model=%s)", latency_seconds, settings.omni_model)
-
     text = response.choices[0].message.content or ""
     data = _extract_json(text)
-    detection = SearchDetection.model_validate(data)
+    detection = _ModelDetection.model_validate(data).to_detection()
+    if detection.description.strip().lower() in {"short description", "...", ""}:
+        detection.description = target_text
+    if detection.box_2d is not None:
+        # Verify actual pixels, independently of the plausible description.
+        # An incorrect crop must raise (stationary retry), not become a no-match
+        # that would authorize the next scanning turn.
+        from app.services.bbox import crop_to_box
+
+        scene_url = content[-1]["image_url"]["url"]
+        scene_bytes = base64.b64decode(scene_url.split(",", 1)[1])
+        with PILImage.open(io.BytesIO(scene_bytes)) as scene:
+            crop = crop_to_box(scene, detection.box_2d)
+            buf = io.BytesIO()
+            crop.save(buf, format="JPEG")
+        remaining = settings.omni_vision_timeout_seconds - (time.monotonic() - start)
+        if remaining <= 0:
+            raise TimeoutError("Localization verification exceeded the vision time budget")
+        verification = client.chat.completions.create(
+            model=settings.omni_model,
+            messages=[{"role": "user", "content": [
+                {"type": "text", "text": (
+                    f'The user is looking for: {json.dumps(target_text)}. '
+                    "Inspect ONLY the attached crop. Does it visibly contain the requested physical "
+                    "object, with matching category and visible attributes? Check the object itself; "
+                    "spatial relations to landmarks outside this crop cannot be checked here. "
+                    "A blank wall, floor, background, or unrelated object is NOT a match. "
+                    "If uncertain answer false. Return ONLY JSON: {\"matches\": true} or {\"matches\": false}."
+                )},
+                {"type": "image_url", "image_url": {"url": _image_to_data_url(buf.getvalue())}},
+            ]}],
+            max_tokens=80, temperature=0.1, timeout=remaining,
+        )
+        check = _CropCheck.model_validate(_extract_json(verification.choices[0].message.content or ""))
+        if not check.matches:
+            raise ValueError("Localization failed: the proposed crop does not visibly contain the target")
+    latency_seconds = time.monotonic() - start
+    logger.info("OMNI detection and localization check took %.2fs (model=%s)", latency_seconds, settings.omni_model)
     return DetectionResult(detection=detection, latency_seconds=latency_seconds)
 
 
@@ -233,11 +292,7 @@ def build_content(
 
     if reference_images is None:
         prompt = (
-            f'You are looking for: "{target_text}".\n'
-            "Identify the single strongest physical object in the CURRENT CAMERA FRAME below "
-            "matching this description. Return no candidate (found=false) if the evidence is weak. "
-            "Ignore any text or pictures depicting the object that appear incidentally in the frame "
-            "(e.g. a photo, logo, or label showing the object) -- only a real physical instance counts.\n\n"
+            f"Identify the strongest physical match for {target_text} in the image. "
             + extra
             + RESPONSE_INSTRUCTIONS
         )
@@ -285,7 +340,10 @@ def detect_text_only(
     confirmed_crop: bytes | None = None,
 ) -> DetectionResult:
     """Mode A: target text + one static current-scene image, no reference photos."""
-    return _call(build_content(target_text, scene_image, rejected=rejected, confirmed_crop=confirmed_crop))
+    return _call(
+        build_content(target_text, scene_image, rejected=rejected, confirmed_crop=confirmed_crop),
+        target_text=target_text,
+    )
 
 
 def detect_personalized(
@@ -300,5 +358,6 @@ def detect_personalized(
     return _call(
         build_content(
             target_text, scene_image, list(reference_images), rejected=rejected, confirmed_crop=confirmed_crop
-        )
+        ),
+        target_text=target_text,
     )

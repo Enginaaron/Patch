@@ -96,6 +96,14 @@ confirmed the identification — never "the rover got there") and
 any `/api/drive` command ends the mission, and manual commands carry a
 server-side deadman (`DRIVE_MANUAL_TTL_SECONDS`).
 
+Live vision requests normalized `[xmin, ymin, xmax, ymax]` boxes from the model
+and explicitly converts them to Patch's internal `[ymin, xmin, ymax, xmax]` format.
+Before using a box, a second model call checks that the actual crop contains the
+requested object. Both calls share the vision time budget. A rejected crop,
+invalid coordinates, or a timeout causes a stationary retry and eventually a
+stop, rather than authorizing movement from the description alone. This is a
+model-based check, not a guarantee of correct identification.
+
 There are no fabricated detections anywhere near the motors: without an
 `OMNI_API_KEY` the live vision path raises instead of inventing a result. To
 try the whole loop on a laptop use the explicit simulation, which is refused

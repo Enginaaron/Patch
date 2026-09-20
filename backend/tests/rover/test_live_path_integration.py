@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import threading
+from types import SimpleNamespace
 
 from PIL import Image
 
@@ -61,7 +63,8 @@ class _FakeGateway:
         self._last_reported: str | None = None
         self._confirmed: str | None = None
 
-    def __call__(self, content: list[dict]) -> DetectionResult:
+    def __call__(self, content: list[dict], *, target_text: str) -> DetectionResult:
+        assert target_text == TARGET_TEXT
         with self.lock:
             self.moving_during_call.append(self.world.is_moving())
             self.contents.append(content)
@@ -144,7 +147,7 @@ def test_live_path_rejection_memory_confirmed_crop_and_arrival(harness, monkeypa
         assert confirmed.width < frame.width and confirmed.height < frame.height
 
     # OMNI always got the user's full wording, and only ever with the wheels stopped.
-    assert all(f'"{TARGET_TEXT}"' in content[0]["text"] for content in gateway.contents)
+    assert all(TARGET_TEXT in content[0]["text"] for content in gateway.contents)
     assert gateway.moving_during_call and not any(gateway.moving_during_call)
 
     # Recognition lifecycle and the files behind the candidate URLs.
@@ -160,3 +163,29 @@ def test_live_path_rejection_memory_confirmed_crop_and_arrival(harness, monkeypa
     assert all(move.ttl is not None and 0 < move.ttl < 2.0 for move in moves)
     assert h.drive.records[-1].command == "stop" and not world.is_moving() and world.watchdog_trips == 0
     assert world.distance_to("target_bottle") < 0.8 < world.distance_to("decoy_bottle")
+
+
+def test_wrong_localization_never_creates_candidate_or_moves_rover(harness, monkeypatch):
+    monkeypatch.setattr(settings, "omni_api_key", "test-key")
+    cfg = fast_config()
+    cfg.max_vision_errors = 2
+    world = build_scenario("two_bottles", make_world(cfg))
+
+    def create(**kwargs):
+        if kwargs["max_tokens"] == 80:
+            reply = {"matches": False}
+        else:
+            reply = {"found": True, "likelihood": "high", "bbox_2d": [48, 53, 96, 107],
+                     "description": "a blue water bottle beside a backpack"}
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(reply)))])
+
+    monkeypatch.setattr(omni_vision, "_client", lambda: SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))))
+    h = harness(cfg, world, vision=LiveVision(cfg, detector=_NoLocalDetector()))
+    sid, log = h.search(TARGET_TEXT)
+    h.controller.start_search(sid)
+    final = log.wait_rest()["payload"]
+    assert (final["phase"], final["reason"]) == ("error", "inference_failed")
+    assert candidates_of(sid) == []
+    assert h.drive.moves == []
+    assert not world.is_moving()
