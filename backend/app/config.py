@@ -11,16 +11,23 @@ class Settings(BaseSettings):
     media_root: str = "./data"
     ai_sample_interval_seconds: float = 1.25
 
-    # Huawei OMNI Live (multimodal reasoning over the live camera frame).
-    # Leave omni_api_key blank to run the fake/demo chat; set it to switch to
-    # the real model with no other code changes. Base URL / model / path are
-    # configurable so the exact OMNI endpoint can be pointed in via .env once
-    # the credentials and docs are confirmed.
+    # OMNI (OpenAI-compatible multimodal gateway). Used by omni_vision (search
+    # detection), omni_speech (voice) and omni_service (chat). The base URL and
+    # model below are the ones verified live on aa_dev; chat path / timeout are
+    # configurable so the chat endpoint can be re-pointed via .env.
     omni_api_key: str = ""
-    omni_base_url: str = "https://api.omni-live.huaweicloud.com/v1"
-    omni_model: str = "omni-live"
+    omni_base_url: str = "https://yibuapi.com/v1"
+    omni_model: str = "qwen3.5-omni-plus"
     omni_chat_path: str = "/chat/completions"
     omni_timeout_seconds: float = 30.0
+
+    # "low" | "medium" | "high" -- minimum SearchDetection.likelihood required
+    # to create a Candidate. Config value so it can be tuned later without a
+    # code change.
+    candidate_likelihood_threshold: str = "high"
+
+    local_detection_enabled: bool = True
+    local_detection_cooldown_seconds: float = 1.25
 
     # ElevenLabs voice (speech out) — wired later, kept here so the key has a home.
     elevenlabs_api_key: str = ""
@@ -44,15 +51,6 @@ class Settings(BaseSettings):
     # If a wheel spins the wrong way, flip its invert flag instead of rewiring.
     motor_left_invert: bool = False
     motor_right_invert: bool = False
-
-    # Autonomous search tuning.
-    search_interval_seconds: float = 0.6  # how often the loop looks + steers
-    search_scan_speed: float = 0.5        # rotate-in-place speed while looking
-    search_turn_speed: float = 0.45       # rotate speed while centering the target
-    search_forward_speed: float = 0.55    # approach speed once centered
-    search_center_tolerance: float = 0.12  # |x-0.5| under this counts as centered
-    search_arrival_size: float = 0.45     # target width fraction that means "arrived"
-    search_min_confidence: float = 0.35   # ignore detections below this
 
 
 settings = Settings()

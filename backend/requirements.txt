@@ -6,4 +6,6 @@ opencv-python
 numpy
 pillow
 python-multipart
+openai
 httpx
+ultralytics

@@ -85,10 +85,19 @@
   opacity: 0.6;
 }
 
-.live-screen__card {
+.live-screen__bottom {
   position: absolute;
   left: 16px;
-  bottom: calc(24px + env(safe-area-inset-bottom));
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  z-index: 1;
+}
+
+.live-screen__card {
   width: 220px;
   background: rgba(255, 255, 255, 0.6);
   backdrop-filter: blur(8px);
@@ -96,13 +105,122 @@
   border-radius: 20px;
   padding: 16px;
   box-shadow: inset 0 0 4px 0 rgba(255, 255, 255, 0.25);
-  z-index: 1;
 }
 
 .live-screen__label {
   font-size: 14px;
   color: #2a2a2a;
   margin: 0;
+}
+
+.live-screen__status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #2a2a2a;
+  margin-bottom: 10px;
+}
+
+.live-screen__status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ccc;
+}
+
+.live-screen__status-dot--searching {
+  background: #2ecc71;
+}
+
+.live-screen__status-dot--candidate_pending {
+  background: #f1c40f;
+}
+
+.live-screen__status-dot--found {
+  background: #2ecc71;
+}
+
+.live-screen__status-dot--active {
+  animation: status-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.7);
+  }
+}
+
+.live-screen__status-thinking {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 2px;
+}
+
+.live-screen__status-thinking span {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: status-thinking-bounce 1.2s infinite ease-in-out;
+}
+
+.live-screen__status-thinking span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.live-screen__status-thinking span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes status-thinking-bounce {
+  0%, 80%, 100% {
+    opacity: 0.2;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+.live-screen__status-dot--cancelled {
+  background: #999;
+}
+
+.live-screen__notice {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(42, 42, 42, 0.9);
+  color: white;
+  padding: 12px 20px;
+  border-radius: 14px;
+  font-size: 15px;
+  z-index: 1;
+}
+
+.live-screen__cancel {
+  width: 100%;
+  border: none;
+  border-radius: 28px;
+  background: rgba(42, 42, 42, 0.92);
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 16px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.live-screen__cancel:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .live-screen__target-pill {
