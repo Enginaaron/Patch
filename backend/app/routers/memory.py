@@ -1,13 +1,21 @@
+import logging
 from datetime import datetime
+from pathlib import Path
 
+import cv2
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlmodel import select
 
+from app.config import settings
 from app.db import get_session
 from app.models import Find, Item, ReferenceImage, Search, SearchStatus
 from app.routers.searches import SearchCreateResponse
-from app.services.search_worker import start_worker
+from app.services.camera_service import camera_service
+from app.services.omni_vision import detect_personalized
+from app.services.search_worker import FRAME_TARGET_WIDTH, JPEG_QUALITY, start_worker
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 
@@ -38,6 +46,24 @@ class ItemDetailResponse(BaseModel):
     name: str
     reference_images: list[ItemReferenceImageOut]
     finds: list[ItemFindOut]
+
+
+class QuickCheckResponse(BaseModel):
+    visible: bool
+    checked_at: datetime
+
+
+def _encode_frame(frame) -> bytes:
+    """Same resize/quality as search_worker._prepare_frame, duplicated
+    locally since Quick Check doesn't need the resized array back (no crop
+    math -- box_2d is ignored entirely here, per Spec 19)."""
+    height, width = frame.shape[:2]
+    scale = FRAME_TARGET_WIDTH / width
+    resized = cv2.resize(frame, (FRAME_TARGET_WIDTH, round(height * scale)))
+    ok, buffer = cv2.imencode(".jpg", resized, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+    if not ok:
+        raise RuntimeError("failed to JPEG-encode frame")
+    return buffer.tobytes()
 
 
 @router.get("/finds", response_model=list[FindListItem])
@@ -123,3 +149,41 @@ def find_again(item_id: str) -> SearchCreateResponse:
 
     start_worker(response.search_id)
     return response
+
+
+@router.post("/items/{item_id}/quick-check", response_model=QuickCheckResponse)
+def quick_check(item_id: str) -> QuickCheckResponse:
+    """Spec 19: a stateless, one-shot "is it still there" check -- a single
+    Mode B OMNI call against the current frame, no Search/Candidate row and
+    no event_bus activity. box_2d is deliberately ignored; only `found`
+    is surfaced, mapped to `visible`."""
+    with get_session() as session:
+        item = session.get(Item, item_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="item not found")
+
+        reference_images = session.exec(
+            select(ReferenceImage).where(ReferenceImage.item_id == item_id)
+        ).all()
+        if not reference_images:
+            raise HTTPException(
+                status_code=400,
+                detail="This item has no reference photos yet -- teach it first before running a quick check.",
+            )
+        reference_paths = [r.image_path for r in reference_images]
+        target_text = item.name
+
+    frame = camera_service.get_frame()
+    if frame is None:
+        raise HTTPException(status_code=503, detail="Camera is unavailable right now.")
+
+    scene_jpeg = _encode_frame(frame)
+    reference_bytes = [Path(settings.media_root, p).read_bytes() for p in reference_paths]
+
+    try:
+        result = detect_personalized(target_text, reference_bytes, scene_jpeg)
+    except Exception as exc:
+        logger.exception("quick check OMNI call failed for item %s", item_id)
+        raise HTTPException(status_code=502, detail=f"vision check failed: {exc}") from exc
+
+    return QuickCheckResponse(visible=result.detection.found, checked_at=datetime.utcnow())

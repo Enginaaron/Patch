@@ -39,6 +39,13 @@ _LIKELIHOOD_ORDER = {"low": 0, "medium": 1, "high": 2}
 # subsequent OMNI prompts as "don't suggest this again" context.
 REJECTED_CONTEXT_LIMIT = 2
 
+# Spec 21: OMNI failure backoff -- doubles from this base on each consecutive
+# failure, capped at the max, reset to normal cadence on the next success.
+# Deliberately independent of AI_SAMPLE_INTERVAL_SECONDS/YOLO_POLL_INTERVAL_SECONDS:
+# this is about not hammering a failing OMNI endpoint, not camera sampling rate.
+VISION_BACKOFF_BASE_SECONDS = 2.0
+VISION_BACKOFF_MAX_SECONDS = 30.0
+
 _active_workers: dict[str, "SearchWorker"] = {}
 _registry_lock = threading.Lock()
 
@@ -80,6 +87,15 @@ def _prepare_frame(frame: np.ndarray) -> tuple[np.ndarray, bytes]:
     return resized, buffer.tobytes()
 
 
+def _laplacian_variance(frame: np.ndarray) -> float:
+    """Standard variance-of-Laplacian blur metric. Computed on the same
+    resized frame that would be sent to OMNI, not the raw camera frame, so
+    the configured threshold means the same thing regardless of the camera's
+    native resolution."""
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+
 def _save_search_image(search_id: str, image_bytes: bytes, suffix: str) -> str:
     search_dir = Path(settings.media_root) / "searches" / search_id
     search_dir.mkdir(parents=True, exist_ok=True)
@@ -119,6 +135,7 @@ class SearchWorker:
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._call_count = 0
+        self._consecutive_failures = 0
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -252,6 +269,18 @@ class SearchWorker:
             logger.exception("frame prep failed for search %s", self.search_id)
             return False
 
+        # Spec 21: skip inference on frames too blurry to be meaningfully
+        # judged -- deliberately not a failure (no backoff, no vision_error).
+        blur_variance = _laplacian_variance(resized_frame)
+        if blur_variance < settings.blur_variance_threshold:
+            logger.info(
+                "search %s: skipping blurry frame (variance=%.1f < threshold=%.1f)",
+                self.search_id,
+                blur_variance,
+                settings.blur_variance_threshold,
+            )
+            return False
+
         rejected_images = _load_recent_rejected_crops(self.search_id) or None
 
         try:
@@ -263,12 +292,38 @@ class SearchWorker:
             else:
                 result = detect_text_only(target_text, scene_jpeg, rejected_images=rejected_images)
         except Exception as exc:
-            logger.exception("OMNI detection call failed for search %s", self.search_id)
+            # Spec 21: covers timeout, network failure, malformed OMNI output,
+            # and invalid box_2d alike -- all of these surface as exceptions
+            # from detect_personalized/detect_text_only (network/timeout from
+            # the httpx/openai client, malformed JSON from _extract_json,
+            # invalid box_2d from SearchDetection's pydantic validator).
+            self._consecutive_failures += 1
+            backoff_seconds = min(
+                VISION_BACKOFF_BASE_SECONDS * (2 ** (self._consecutive_failures - 1)),
+                VISION_BACKOFF_MAX_SECONDS,
+            )
+            logger.exception(
+                "search %s: OMNI detection call failed (%d consecutive), backing off %.1fs",
+                self.search_id,
+                self._consecutive_failures,
+                backoff_seconds,
+            )
             event_bus.publish(
                 self.search_id,
                 {"type": "vision_error", "payload": {"message": str(exc)}},
             )
+            # Interruptible sleep -- a cancel/reject during backoff still
+            # stops promptly rather than waiting out the full delay.
+            self._stop_event.wait(backoff_seconds)
             return False
+
+        if self._consecutive_failures > 0:
+            # Spec 21: "resume normal-cadence sampling automatically once a
+            # request succeeds" -- tell the frontend explicitly too, since it
+            # has no other signal that a quiet (nothing-found) success ever
+            # happened to know the earlier vision_error is now stale.
+            event_bus.publish(self.search_id, {"type": "vision_recovered", "payload": {}})
+        self._consecutive_failures = 0
 
         self._call_count += 1
         logger.info(

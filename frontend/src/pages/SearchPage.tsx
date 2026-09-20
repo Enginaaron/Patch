@@ -65,6 +65,7 @@ function SearchPage() {
   const [loadState, setLoadState] = useState<LoadState>('loading')
   const [cancelling, setCancelling] = useState(false)
   const [deciding, setDeciding] = useState(false)
+  const [visionError, setVisionError] = useState(false)
   const evidenceImgRef = useRef<HTMLImageElement>(null)
 
   useEffect(() => {
@@ -97,11 +98,33 @@ function SearchPage() {
   // refetch" signal rather than a payload to merge into state directly --
   // status stays sourced from GET /api/searches/{id} alone (Spec 6), SSE
   // just tells us when to ask again.
+  //
+  // Spec 21: vision_error/vision_recovered are the exception -- they're
+  // shown as a local nonfatal banner instead, since the search's actual
+  // status hasn't changed and there's nothing new to refetch for them.
   useEffect(() => {
     if (!searchId) return
 
     const source = new EventSource(`/api/searches/${searchId}/events`)
-    source.onmessage = () => {
+    source.onopen = () => setVisionError(false)
+    source.onmessage = (event) => {
+      let type: string | undefined
+      try {
+        type = JSON.parse(event.data).type
+      } catch {
+        type = undefined
+      }
+
+      if (type === 'vision_error') {
+        setVisionError(true)
+        return
+      }
+      if (type === 'vision_recovered') {
+        setVisionError(false)
+        return
+      }
+
+      setVisionError(false)
       fetch(`/api/searches/${searchId}`)
         .then((res) => (res.ok ? res.json() : Promise.reject(res)))
         .then((data: SearchDetail) => setSearch(data))
@@ -276,6 +299,16 @@ function SearchPage() {
 
           {!showingCandidate && !showingFound && (
             <div className="live-screen__bottom">
+              {/* Spec 21: nonfatal -- the worker is backing off and retrying
+                  on its own; this just keeps the user informed while it does. */}
+              {visionError && (
+                <div className="live-screen__vision-notice">
+                  Vision temporarily unavailable.
+                  <br />
+                  Retrying...
+                </div>
+              )}
+
               <div className="live-screen__card">
                 <div className="live-screen__status">
                   <span

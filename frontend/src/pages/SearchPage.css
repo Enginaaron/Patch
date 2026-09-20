@@ -252,6 +252,17 @@
   z-index: 1;
 }
 
+.live-screen__vision-notice {
+  width: 220px;
+  background: rgba(241, 196, 15, 0.85);
+  color: #2a2a2a;
+  font-size: 13px;
+  line-height: 1.4;
+  border-radius: 14px;
+  padding: 10px 14px;
+  box-sizing: border-box;
+}
+
 .live-screen__card {
   width: 220px;
   background: rgba(255, 255, 255, 0.6);

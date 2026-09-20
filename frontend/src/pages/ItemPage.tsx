@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Mic } from 'lucide-react'
+import useVoice from '../hooks/useVoice'
 import { formatDate, formatTime } from '../utils/datetime'
 import './ItemPage.css'
 
@@ -23,6 +24,11 @@ interface ItemDetail {
   finds: ItemFind[]
 }
 
+interface QuickCheckResult {
+  visible: boolean
+  checked_at: string
+}
+
 type LoadState = 'loading' | 'loaded' | 'not_found' | 'error'
 
 function ItemPage() {
@@ -31,6 +37,9 @@ function ItemPage() {
   const [item, setItem] = useState<ItemDetail | null>(null)
   const [loadState, setLoadState] = useState<LoadState>('loading')
   const [findingAgain, setFindingAgain] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [quickCheckResult, setQuickCheckResult] = useState<QuickCheckResult | null>(null)
+  const [quickCheckError, setQuickCheckError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!itemId) return
@@ -58,6 +67,7 @@ function ItemPage() {
   }, [itemId])
 
   const latest = item?.finds[0] ?? null
+  const hasReferencePhotos = (item?.reference_images.length ?? 0) > 0
 
   const handleFindAgain = async () => {
     if (!itemId || findingAgain) return
@@ -71,6 +81,39 @@ function ItemPage() {
       setFindingAgain(false)
     }
   }
+
+  // Spec 19: voice-first, text-first -- the on-screen result is set the
+  // instant this (the vision call) returns. speak() below is fire-and-forget
+  // (Spec 8), so it never delays that update; it's a follow-on, not
+  // something the UI waits on.
+  const runQuickCheck = async () => {
+    if (!itemId || !hasReferencePhotos || checking) return
+    setChecking(true)
+    setQuickCheckError(null)
+    try {
+      const res = await fetch(`/api/items/${itemId}/quick-check`, { method: 'POST' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.detail ?? 'Quick check failed')
+      }
+      const data = (await res.json()) as QuickCheckResult
+      setQuickCheckResult(data)
+      speak(data.visible ? 'Yes, still there' : 'Not visible right now')
+    } catch (err) {
+      setQuickCheckError(err instanceof Error ? err.message : 'Quick check failed')
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  // Spec 19: this mic is scoped to this item's page -- any transcript
+  // triggers the check for this item, no keyword parsing needed since the
+  // page context already says which item "check my keys" means.
+  const { isRecording, isTranscribing, startRecording, stopRecording, speak } = useVoice({
+    onTranscript: () => {
+      runQuickCheck()
+    },
+  })
 
   return (
     <main className="item-page">
@@ -123,7 +166,65 @@ function ItemPage() {
             )}
           </div>
 
+          {quickCheckError && <p className="item-page__notice item-page__notice--error">{quickCheckError}</p>}
+
+          {/* Spec 19: text is shown the instant the vision call returns --
+              the "checked just now" copy is literal, not a live timestamp,
+              since the result is always fresh at the moment it renders. */}
+          {quickCheckResult && (
+            <div
+              className={`quick-check-result${quickCheckResult.visible ? '' : ' quick-check-result--negative'}`}
+            >
+              {quickCheckResult.visible ? (
+                <>
+                  <p className="quick-check-result__status">✓ Still there</p>
+                  <p className="quick-check-result__meta">Checked just now</p>
+                </>
+              ) : (
+                <>
+                  <p className="quick-check-result__status">Not visible right now</p>
+                  <button
+                    type="button"
+                    className="quick-check-result__search-button"
+                    onClick={handleFindAgain}
+                    disabled={findingAgain}
+                  >
+                    {findingAgain ? 'STARTING…' : 'SEARCH FOR IT'}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {!hasReferencePhotos && (
+            <p className="item-page__notice">
+              Quick Check needs at least one reference photo -- teach this item first.
+            </p>
+          )}
+
           <div className="item-page__actions">
+            {hasReferencePhotos && (
+              <button
+                type="button"
+                className={`item-page__mic${isRecording ? ' item-page__mic--recording' : ''}`}
+                onMouseDown={startRecording}
+                onMouseUp={stopRecording}
+                onMouseLeave={() => isRecording && stopRecording()}
+                onTouchStart={(e) => {
+                  e.preventDefault()
+                  startRecording()
+                }}
+                onTouchEnd={(e) => {
+                  e.preventDefault()
+                  stopRecording()
+                }}
+                disabled={checking || isTranscribing}
+                aria-label="Hold to quick check by voice"
+                title="Hold and say something, e.g. &quot;check my keys&quot;"
+              >
+                <Mic size={18} color="white" strokeWidth={1.875} />
+              </button>
+            )}
             <button
               type="button"
               className="item-page__action"
@@ -135,10 +236,11 @@ function ItemPage() {
             <button
               type="button"
               className="item-page__action"
-              disabled
-              title="Quick check isn't wired up yet"
+              onClick={runQuickCheck}
+              disabled={!hasReferencePhotos || checking}
+              title={hasReferencePhotos ? undefined : 'Teach this item with a reference photo first'}
             >
-              QUICK CHECK
+              {checking ? 'CHECKING…' : 'QUICK CHECK'}
             </button>
           </div>
         </>

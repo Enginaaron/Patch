@@ -40,7 +40,16 @@ function useVoice({ onTranscript }: UseVoiceOptions = {}): UseVoiceResult {
   }, [])
 
   const startRecording = useCallback(async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    } catch (err) {
+      // Spec 21: mic permission denied / no device -- fail silently back to
+      // the tap-based flow rather than leaving the caller stuck. isRecording
+      // never flips true, so the mic button just looks like it did nothing.
+      console.warn('microphone unavailable', err)
+      return
+    }
     streamRef.current = stream
 
     const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : ''
@@ -68,6 +77,14 @@ function useVoice({ onTranscript }: UseVoiceOptions = {}): UseVoiceResult {
           const data = await res.json()
           onTranscript?.(data.transcript)
         }
+        // Spec 21: a non-ok response (no speech detected, malformed output,
+        // etc.) just means onTranscript never fires -- the text field (or
+        // whatever the caller was populating) is simply left as-is for
+        // manual input, no error surfaced.
+      } catch (err) {
+        // Network failure reaching the backend at all -- same graceful
+        // fallback as a non-ok response above.
+        console.warn('transcription failed', err)
       } finally {
         setIsTranscribing(false)
       }

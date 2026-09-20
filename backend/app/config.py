@@ -23,5 +23,10 @@ class Settings(BaseSettings):
     local_detection_enabled: bool = True
     local_detection_cooldown_seconds: float = 1.25
 
+    # Spec 21: cv2.Laplacian variance below this is treated as "too blurry to
+    # bother sending to OMNI" -- skip inference on that frame entirely.
+    # Configurable since the right cutoff depends on the camera/lighting.
+    blur_variance_threshold: float = 60.0
+
 
 settings = Settings()

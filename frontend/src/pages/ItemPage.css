@@ -133,3 +133,86 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+.item-page__mic {
+  flex-shrink: 0;
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  border: none;
+  background: #2a2a2a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.item-page__mic:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.item-page__mic--recording {
+  background: #e74c3c;
+  animation: item-page-mic-pulse 1s ease-in-out infinite;
+}
+
+@keyframes item-page-mic-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(231, 76, 60, 0);
+  }
+}
+
+.item-page__notice--error {
+  color: #c0392b;
+}
+
+/* Spec 19: a lightweight inline result, not a full-screen interrupt --
+   Quick Check is deliberately a single one-shot answer, not a state change
+   like the candidate/found overlays elsewhere in the app. */
+.quick-check-result {
+  border-radius: 16px;
+  padding: 16px;
+  margin-top: 20px;
+  text-align: center;
+  background: #eafaf1;
+}
+
+.quick-check-result--negative {
+  background: #fbeeee;
+}
+
+.quick-check-result__status {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-h, #08060d);
+  margin: 0 0 4px;
+}
+
+.quick-check-result__meta {
+  font-size: 13px;
+  color: #666;
+  margin: 0;
+}
+
+.quick-check-result__search-button {
+  border: none;
+  border-radius: 20px;
+  padding: 10px 20px;
+  margin-top: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  background: #2a2a2a;
+  color: white;
+  cursor: pointer;
+}
+
+.quick-check-result__search-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

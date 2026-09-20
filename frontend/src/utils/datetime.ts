@@ -21,14 +21,20 @@ function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 }
 
-export function dayLabel(isoString: string): string {
+// Sentence case ("Today", "Yesterday", "September 18").
+function relativeDay(isoString: string): string {
   const date = parseUtc(isoString)
   const now = new Date()
-  if (isSameDay(date, now)) return 'TODAY'
+  if (isSameDay(date, now)) return 'Today'
 
   const yesterday = new Date(now)
   yesterday.setDate(now.getDate() - 1)
-  if (isSameDay(date, yesterday)) return 'YESTERDAY'
+  if (isSameDay(date, yesterday)) return 'Yesterday'
 
-  return DATE_FORMAT.format(date).toUpperCase()
+  return DATE_FORMAT.format(date)
+}
+
+// All-caps ("TODAY", "YESTERDAY", "SEPTEMBER 18") -- for section headers.
+export function dayLabel(isoString: string): string {
+  return relativeDay(isoString).toUpperCase()
 }
