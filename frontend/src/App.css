@@ -6,19 +6,14 @@
   min-height: 100svh;
   max-width: 430px;
   margin: 0 auto;
-  padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+  padding: 24px 7px calc(24px + env(safe-area-inset-bottom));
   box-sizing: border-box;
-  gap: 32px;
+  gap: 68px;
+  background: #2c262d;
 }
 
 .status-dot {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #d0d0d0;
+  display: none;
 }
 
 .status-dot--connected {
@@ -31,12 +26,13 @@
 
 .menu-button {
   position: absolute;
-  top: 16px;
-  left: 16px;
+  top: 69px;
+  left: 14px;
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: black;
+  border: 1px solid #888;
+  background: rgba(255, 254, 248, 0.08);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -47,32 +43,38 @@
 }
 
 .home__logo {
-  width: 45px;
-  height: auto;
-  margin-bottom: 8px;
+  width: 75px;
+  height: 50px;
+  margin-bottom: 4px;
 }
 
 .home__title {
   font-size: 36px;
   font-style: italic;
   font-weight: 500;
-  margin: 0 0 8px;
-  color: var(--text-h);
+  line-height: 1;
+  margin: 0 0 10px;
+  color: #fffef8;
 }
 
 .home__subtitle {
-  font-size: 20px;
+  font-size: 16px;
   margin: 0;
-  color: var(--text-h);
+  color: #fffef8;
 }
 
 .search-bar {
-  border: 1px solid black;
+  width: 100%;
+  min-height: 94px;
+  box-sizing: border-box;
+  border: 1px solid #888;
   border-radius: 30px;
+  background: rgba(255, 254, 248, 0.1);
   padding: 14px 5px 5px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  overflow: hidden;
 }
 
 .search-bar__input {
@@ -82,10 +84,15 @@
   background: transparent;
   font: inherit;
   font-size: 16px;
-  color: var(--text-h);
+  color: #fffef8;
   padding: 0 13px;
   min-height: 24px;
   max-height: 96px;
+}
+
+.search-bar__input::placeholder {
+  color: #fffef8;
+  opacity: 1;
 }
 
 .reference-preview {
@@ -138,7 +145,7 @@
 }
 
 .icon-button {
-  border: none;
+  border: 1px solid #888;
   background: none;
   padding: 0;
   width: 45px;
@@ -147,12 +154,30 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-h);
+  color: #fffef8;
   cursor: pointer;
 }
 
 .icon-button--circle {
-  background: black;
+  background: rgba(255, 254, 248, 0.1);
+}
+
+.icon-button--plus {
+  background: rgba(255, 254, 248, 0.1);
+}
+
+.icon-button--recording {
+  background: #e74c3c;
+  animation: mic-recording-pulse 1s ease-in-out infinite;
+}
+
+@keyframes mic-recording-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(231, 76, 60, 0);
+  }
 }
 
 .icon-button:disabled {

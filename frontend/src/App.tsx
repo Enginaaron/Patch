@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { AlignLeft, ArrowUp, CirclePlus, Mic, X } from 'lucide-react'
-import logoMark from './assets/logo-mark.svg'
+import { AlignLeft, ArrowUp, Mic, Plus, X } from 'lucide-react'
+import logoMark from './assets/patchlogo.png'
+import useVoice from './hooks/useVoice'
 import './App.css'
 
 type ConnectionStatus = 'checking' | 'connected' | 'disconnected'
@@ -21,6 +22,12 @@ function App() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const { isRecording, isTranscribing, startRecording, stopRecording } = useVoice({
+    onTranscript: (transcript) => {
+      if (transcript) setTargetText(transcript)
+    },
+  })
 
   useEffect(() => {
     fetch('/api/health')
@@ -67,9 +74,7 @@ function App() {
         throw new Error(body?.detail ?? 'Failed to start search')
       }
       const data = await res.json()
-      navigate(`/search/${data.search_id}`, {
-        state: { targetText: data.target_text, previewUrl: images[0]?.previewUrl },
-      })
+      navigate(`/search/${data.search_id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start search')
       setSubmitting(false)
@@ -103,7 +108,7 @@ function App() {
       >
         <textarea
           className="search-bar__input"
-          placeholder="i'm looking for my...."
+          placeholder="I’m looking for my..."
           value={targetText}
           onChange={(e) => setTargetText(e.target.value)}
           onKeyDown={(e) => {
@@ -141,7 +146,7 @@ function App() {
             onClick={handleAddPhotoClick}
             disabled={remainingSlots <= 0}
           >
-            <CirclePlus size={45} strokeWidth={1.5} />
+              <Plus size={24} strokeWidth={1.875} />
           </button>
           <input
             ref={fileInputRef}
@@ -154,10 +159,21 @@ function App() {
           <div className="search-bar__actions-right">
             <button
               type="button"
-              className="icon-button icon-button--circle"
-              aria-label="Voice input"
-              disabled
-              title="Voice input isn't available yet"
+              className={`icon-button icon-button--circle${isRecording ? ' icon-button--recording' : ''}`}
+              aria-label={isRecording ? 'Recording… release to stop' : 'Hold to speak'}
+              title={isTranscribing ? 'Transcribing…' : 'Hold to speak'}
+              disabled={isTranscribing}
+              onMouseDown={startRecording}
+              onMouseUp={stopRecording}
+              onMouseLeave={() => isRecording && stopRecording()}
+              onTouchStart={(e) => {
+                e.preventDefault()
+                startRecording()
+              }}
+              onTouchEnd={(e) => {
+                e.preventDefault()
+                stopRecording()
+              }}
             >
               <Mic size={24} color="white" strokeWidth={1.875} />
             </button>
@@ -165,7 +181,7 @@ function App() {
               type="submit"
               className="icon-button icon-button--circle"
               aria-label="Search"
-              disabled={targetText.trim().length === 0 || submitting}
+              disabled={submitting}
             >
               <ArrowUp size={24} color="white" strokeWidth={1.875} />
             </button>
