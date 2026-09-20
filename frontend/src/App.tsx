@@ -67,9 +67,7 @@ function App() {
         throw new Error(body?.detail ?? 'Failed to start search')
       }
       const data = await res.json()
-      navigate(`/search/${data.search_id}`, {
-        state: { targetText: data.target_text, previewUrl: images[0]?.previewUrl },
-      })
+      navigate(`/search/${data.search_id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start search')
       setSubmitting(false)

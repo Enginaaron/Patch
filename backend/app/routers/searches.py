@@ -1,10 +1,12 @@
+from datetime import datetime
+
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import func
-from sqlmodel import select
+from sqlmodel import Session, select
 
 from app.db import get_session
-from app.models import Item, ReferenceImage, Search, SearchStatus
+from app.models import Candidate, CandidateDecision, Item, ReferenceImage, Search, SearchStatus
 from app.storage import InvalidImageError, save_reference_image
 
 router = APIRouter(prefix="/api")
@@ -18,6 +20,63 @@ class SearchCreateResponse(BaseModel):
     target_text: str
     reference_count: int
     status: str
+
+
+class ReferenceImageOut(BaseModel):
+    id: str
+    url: str
+
+
+class PendingCandidateOut(BaseModel):
+    candidate_id: str
+    description: str
+    crop_url: str
+    created_at: datetime
+
+
+class SearchDetailResponse(BaseModel):
+    search_id: str
+    item_id: str
+    target_text: str
+    status: str
+    started_at: datetime
+    ended_at: datetime | None
+    reference_images: list[ReferenceImageOut]
+    pending_candidate: PendingCandidateOut | None
+
+
+def _build_search_detail(session: Session, search: Search) -> SearchDetailResponse:
+    reference_images = session.exec(
+        select(ReferenceImage).where(ReferenceImage.item_id == search.item_id)
+    ).all()
+
+    pending = session.exec(
+        select(Candidate)
+        .where(Candidate.search_id == search.id, Candidate.decision == CandidateDecision.PENDING)
+        .order_by(Candidate.created_at.desc())
+    ).first()
+
+    return SearchDetailResponse(
+        search_id=search.id,
+        item_id=search.item_id,
+        target_text=search.target_text,
+        status=search.status.value,
+        started_at=search.started_at,
+        ended_at=search.ended_at,
+        reference_images=[
+            ReferenceImageOut(id=r.id, url=f"/media/{r.image_path}") for r in reference_images
+        ],
+        pending_candidate=(
+            PendingCandidateOut(
+                candidate_id=pending.id,
+                description=pending.description,
+                crop_url=f"/media/{pending.crop_path}",
+                created_at=pending.created_at,
+            )
+            if pending
+            else None
+        ),
+    )
 
 
 @router.post("/searches", response_model=SearchCreateResponse)
@@ -75,3 +134,28 @@ async def create_search(
         )
 
     return response
+
+
+@router.get("/searches/{search_id}", response_model=SearchDetailResponse)
+def get_search(search_id: str) -> SearchDetailResponse:
+    with get_session() as session:
+        search = session.get(Search, search_id)
+        if search is None:
+            raise HTTPException(status_code=404, detail="search not found")
+        return _build_search_detail(session, search)
+
+
+@router.post("/searches/{search_id}/cancel", response_model=SearchDetailResponse)
+def cancel_search(search_id: str) -> SearchDetailResponse:
+    with get_session() as session:
+        search = session.get(Search, search_id)
+        if search is None:
+            raise HTTPException(status_code=404, detail="search not found")
+
+        search.status = SearchStatus.CANCELLED
+        search.ended_at = datetime.utcnow()
+        session.add(search)
+        session.commit()
+        session.refresh(search)
+
+        return _build_search_detail(session, search)
