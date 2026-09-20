@@ -208,6 +208,10 @@ class DrivePort(Protocol):
     @property
     def driver_name(self) -> str: ...
 
+    def set_speeds(self, left: float, right: float, command: str = "custom", ttl: float | None = None) -> None:
+        """Existing DriveService wheel API, including its independent watchdog."""
+        ...
+
     def drive(self, command: str, speed: float | None = None, ttl: float | None = None) -> None:
         """Start a named drive command. ``ttl`` arms an independent watchdog
         that stops the wheels even if the caller never returns."""

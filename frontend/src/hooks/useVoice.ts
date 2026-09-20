@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { speakOmni, stopOmniSpeech, useOmniSpeaker } from '../lib/omniSpeaker'
 
 // Safety cap so a stuck recording can't run forever if the user forgets to
 // release the mic button. Real silence-based auto-stop (VAD) is a later
@@ -25,7 +26,7 @@ interface UseVoiceResult {
 function useVoice({ onTranscript, onTranscriptError }: UseVoiceOptions = {}): UseVoiceResult {
   const [isRecording, setIsRecording] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
-  const [isSpeaking, setIsSpeaking] = useState(false)
+  const { busy: isSpeaking } = useOmniSpeaker()
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -36,12 +37,6 @@ function useVoice({ onTranscript, onTranscriptError }: UseVoiceOptions = {}): Us
   // that arrives for an outdated press is discarded instead of starting a
   // recording nobody is holding the button for.
   const recordAttemptRef = useRef(0)
-  // Speech bookkeeping: the clip that is playing, and a token that a newer
-  // speak()/stopSpeaking() bumps so an older synthesis still in flight is
-  // dropped when it finally lands.
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const speakTokenRef = useRef(0)
-
   const stopRecording = useCallback(() => {
     recordAttemptRef.current += 1
     if (maxDurationTimerRef.current) {
@@ -55,6 +50,7 @@ function useVoice({ onTranscript, onTranscriptError }: UseVoiceOptions = {}): Us
   }, [])
 
   const startRecording = useCallback(async () => {
+    stopOmniSpeech()
     const attempt = ++recordAttemptRef.current
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     if (attempt !== recordAttemptRef.current) {
@@ -104,57 +100,15 @@ function useVoice({ onTranscript, onTranscriptError }: UseVoiceOptions = {}): Us
     maxDurationTimerRef.current = setTimeout(stopRecording, MAX_RECORDING_MS)
   }, [onTranscript, onTranscriptError, stopRecording])
 
-  const stopSpeaking = useCallback(() => {
-    speakTokenRef.current += 1
-    audioRef.current?.pause()
-    audioRef.current = null
-    setIsSpeaking(false)
-  }, [])
+  const speak = speakOmni
+  const stopSpeaking = stopOmniSpeech
 
-  // Fire-and-forget by design: the caller never awaits this. It shows
-  // whatever text it already has immediately, and audio plays independently
-  // whenever the synthesis round-trip finishes -- never blocking the UI.
-  // A newer speak() replaces an older one: the playing clip is cut and a
-  // synthesis still in flight is discarded, so Patch never talks over itself
-  // or says something stale after the state has moved on.
-  const speak = useCallback((text: string) => {
-    const token = ++speakTokenRef.current
-    audioRef.current?.pause()
-    audioRef.current = null
-    setIsSpeaking(true)
-    fetch('/api/speech/synthesize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    })
-      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data: { audio_url: string }) => {
-        if (token !== speakTokenRef.current) return
-        const audio = new Audio(data.audio_url)
-        const finished = () => {
-          if (audioRef.current !== audio) return
-          audioRef.current = null
-          setIsSpeaking(false)
-        }
-        audio.onended = finished
-        audio.onerror = finished
-        audioRef.current = audio
-        return audio.play()
-      })
-      .catch(() => {
-        if (token === speakTokenRef.current) setIsSpeaking(false)
-      })
-  }, [])
-
-  // Leaving the page silences Patch and releases the microphone. A recording
+  // Leaving the page releases the microphone. Shared speech survives route
+  // mounts (including StrictMode); a new reply or explicit stop replaces it. A recording
   // abandoned this way is discarded, not transcribed: its answer would land
   // on a page the user has already left.
   useEffect(() => {
     return () => {
-      speakTokenRef.current += 1
-      audioRef.current?.pause()
-      audioRef.current = null
-
       recordAttemptRef.current += 1
       if (maxDurationTimerRef.current) clearTimeout(maxDurationTimerRef.current)
       const recorder = mediaRecorderRef.current

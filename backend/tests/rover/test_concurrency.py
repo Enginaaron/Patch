@@ -179,7 +179,7 @@ def test_every_pulse_of_a_whole_mission_arms_the_watchdog(harness):
     assert log.wait_rest()["payload"]["phase"] == "arrived"
 
     moves = h.drive.moves
-    assert {m.command for m in moves} == {"turn_right", "forward"}
+    assert {m.command for m in moves} == {"turn_right", "forward", "veer_right"}
     longest = max(cfg.scan_pulse_seconds, cfg.turn_pulse_max_seconds, cfg.forward_pulse_seconds)
     for move in moves:
         assert move.ttl is not None

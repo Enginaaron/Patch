@@ -43,7 +43,8 @@ from app.rover import geometry
 from app.rover.config import RoverConfig
 from app.rover.mission import APPROACH, SCAN, AcceptedTarget, Mission, MissionEnd
 from app.rover.motion import MAX_PULSE_SECONDS, UNSAFE_VISION_MESSAGE, Motion, vision_is_unsafe
-from app.rover.proximity import ProximityProfile, arrival_evidence, in_slow_zone, load_profiles, profile_for
+from app.rover.proximity import ProximityProfile, in_slow_zone, load_profiles, profile_for
+from app.rover.steering import ApproachSteering
 from app.rover.store import MovementRecord, RoverStore, SearchRecord
 from app.rover.types import (
     ACTIVE_PHASES,
@@ -1087,6 +1088,7 @@ class RoverController:
         track = self._reacquire(mission, ctx, accepted)
         self._report_track(mission, track)
 
+        steering = ApproachSteering(cfg)
         started = time.monotonic()
         forward_stall = turn_stall = 0
         progress_width, progress_height = geometry.width(track.box), geometry.height(track.box)
@@ -1094,9 +1096,9 @@ class RoverController:
         while True:
             self._check_search_status(mission, SearchStatus.FOUND)
 
-            if arrival_evidence(track.box, ctx.profile):
+            if steering.arrival(track.box, ctx.profile):
                 self._transition(mission, MovementPhase.CHECKING, "I think I'm close — double-checking")
-                if self._confirm_arrival(mission, ctx, track):
+                if self._confirm_arrival(mission, ctx, track, steering):
                     raise MissionEnd(MovementPhase.ARRIVED, StopReason.PROXIMITY_CONFIRMED, f"I'm next to {target}")
                 continue  # the evidence did not hold; track now holds the newer observation
 
@@ -1109,28 +1111,29 @@ class RoverController:
                 )
 
             before = track.box
-            offset = geometry.offset_from_center(before)
-            if abs(offset) > cfg.center_tolerance:
-                kind = "turn"
-                command = geometry.turn_command_for_offset(offset)
-                wanted = abs(offset) * cfg.camera_hfov_degrees / max(cfg.turn_degrees_per_second, 1e-6)
-                duration = max(cfg.turn_pulse_min_seconds, min(cfg.turn_pulse_max_seconds, wanted))
-                self._transition(mission, MovementPhase.CENTERING, f"Turning to face {target}")
-                duration = self._pulse(mission, command, cfg.turn_speed, duration)
-                delta = (1 if command == "turn_right" else -1) * cfg.turn_degrees_per_second * duration
-                mission.heading_est += delta
-                predicted = geometry.predict_box_after_turn(before, delta, cfg.camera_hfov_degrees)
-            else:
-                kind = "forward"
-                slow = in_slow_zone(before, ctx.profile, cfg.slow_zone_fraction)
-                speed = cfg.slow_forward_speed if slow else cfg.forward_speed
-                duration = cfg.slow_forward_pulse_seconds if slow else cfg.forward_pulse_seconds
-                message = "Almost there — slowing down" if slow else f"Moving closer to {target}"
-                self._transition(mission, MovementPhase.APPROACHING, message)
-                self._pulse(mission, "forward", speed, duration)
-                # Moving forward makes the box grow about its centre; the size
-                # gate in associate() allows for that growth.
-                predicted = before
+            offset = 2.0 * geometry.offset_from_center(before)  # -1..1, not -0.5..0.5
+            slow_profile = replace(ctx.profile,
+                arrive_width=ctx.profile.arrive_width * cfg.arrival_enter_scale,
+                arrive_height=ctx.profile.arrive_height * cfg.arrival_enter_scale)
+            slow = in_slow_zone(before, slow_profile, cfg.slow_zone_fraction)
+            wheels = steering.wheels(offset, slow=slow)
+            kind = "turn" if wheels.pivot else "forward"
+            duration = cfg.slow_forward_pulse_seconds if slow else cfg.forward_pulse_seconds
+            # The current command is held only for this lease, then stopped
+            # before recognition. A missing or slow observation cannot extend it.
+            duration = min(duration, cfg.lost_target_hold_seconds, MAX_PULSE_SECONDS)
+            message = (f"Turning to face {target}" if wheels.pivot else
+                       "Almost there — slowing down" if slow else f"Moving closer to {target}")
+            self._transition(mission, MovementPhase.CENTERING if wheels.pivot else MovementPhase.APPROACHING, message)
+            if not self._motion.pulse(mission, wheels.label, max(abs(wheels.left), abs(wheels.right)),
+                                      duration, wheels=(wheels.left, wheels.right)):
+                raise MissionEnd(MovementPhase.ERROR, StopReason.INTERNAL_ERROR, _INTERNAL_ERROR_MESSAGE)
+            # Same approximate calibration as before, scaled to the actual
+            # differential command. Association still checks the next image.
+            delta = ((wheels.left - wheels.right) / 2 / max(cfg.turn_speed, 1e-6)
+                     * cfg.turn_degrees_per_second * duration)
+            mission.heading_est += delta
+            predicted = geometry.predict_box_after_turn(before, delta, cfg.camera_hfov_degrees)
 
             mission.approach_pulses += 1
             track.pulses_since_omni += 1
@@ -1231,6 +1234,7 @@ class RoverController:
         cfg = self._config
         target = mission.phrase
         attempts = saw_without_box = saw_invalid = 0
+        missed_since: float | None = None
 
         while True:
             packet = self._fresh_frame(mission)
@@ -1269,11 +1273,15 @@ class RoverController:
             elif usable:
                 saw_invalid += 1
 
-            if attempts >= cfg.reacquire_attempts:
+            if missed_since is None:
+                missed_since = time.monotonic()
+            if (attempts >= cfg.reacquire_attempts
+                    or time.monotonic() - missed_since >= cfg.lost_target_timeout_seconds):
                 raise self._lost(target, saw_without_box, saw_invalid)
             force_omni = True  # keep asking OMNI from the same spot
 
-    def _confirm_arrival(self, mission: Mission, ctx: _Context, track: _Track) -> bool:
+    def _confirm_arrival(self, mission: Mission, ctx: _Context, track: _Track,
+                         steering: ApproachSteering) -> bool:
         """Arrival needs ``arrival_confirmations`` consecutive stationary
         observations that all show arrival evidence, the last one validated by
         OMNI. One big box proves nothing: OMNI merely *finding* the object
@@ -1284,7 +1292,7 @@ class RoverController:
             final = confirmations >= needed - 1
             self._observe(mission, ctx, track, track.box, force_omni=final)
             self._report_track(mission, track)
-            if not arrival_evidence(track.box, ctx.profile):
+            if not steering.arrival(track.box, ctx.profile):
                 return False
             confirmations += 1
         return True

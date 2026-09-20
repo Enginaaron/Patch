@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Mic, MessageCircle, Send, X } from 'lucide-react'
 import './ChatPanel.css'
+import { speakOmni, stopOmniSpeech } from '../lib/omniSpeaker'
 
 type Role = 'user' | 'assistant'
 
@@ -25,6 +26,9 @@ function ChatPanel({ targetText }: ChatPanelProps) {
   const [sending, setSending] = useState(false)
   const [mode, setMode] = useState<'live' | 'demo' | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const replyTokenRef = useRef(0)
+
+  useEffect(() => () => { replyTokenRef.current += 1 }, [])
 
   useEffect(() => {
     fetch('/api/omni/status')
@@ -45,6 +49,7 @@ function ChatPanel({ targetText }: ChatPanelProps) {
     setMessages(nextMessages)
     setInput('')
     setSending(true)
+    const replyToken = ++replyTokenRef.current
 
     try {
       const res = await fetch('/api/chat', {
@@ -57,7 +62,9 @@ function ChatPanel({ targetText }: ChatPanelProps) {
       })
       if (!res.ok) throw new Error('chat failed')
       const data = await res.json()
+      if (replyToken !== replyTokenRef.current) return
       setMessages((prev) => [...prev, { role: 'assistant', content: data.reply }])
+      speakOmni(data.reply)
       if (data.mode === 'live' || data.mode === 'demo') setMode(data.mode)
     } catch {
       setMessages((prev) => [
@@ -90,7 +97,7 @@ function ChatPanel({ targetText }: ChatPanelProps) {
             </span>
           )}
         </div>
-        <button type="button" className="chat-panel__close" onClick={() => setOpen(false)} aria-label="Close chat">
+        <button type="button" className="chat-panel__close" onClick={() => { replyTokenRef.current += 1; stopOmniSpeech(); setOpen(false) }} aria-label="Close chat">
           <X size={18} />
         </button>
       </header>

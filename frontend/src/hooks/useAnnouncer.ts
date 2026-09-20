@@ -34,8 +34,8 @@ interface UseAnnouncerResult {
 // that may make Patch repeat itself. A key is remembered BEFORE speech starts
 // (ref for this mount, sessionStorage across reloads), so the second pass of a
 // double effect already sees it. Replacing audio that is still playing is
-// speak()'s job (useVoice does that); speech failures are silent -- the same
-// text is always on screen.
+// speak()'s job. The shared OMNI speaker surfaces failures and offers replay;
+// the same text is always on screen.
 function useAnnouncer(speak: (text: string) => void): UseAnnouncerResult {
   const spokenRef = useRef<Set<string> | null>(null)
 

@@ -19,6 +19,7 @@ from the next fresh camera frame.
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import time
 from typing import Callable
@@ -37,7 +38,7 @@ from app.rover.types import (
 logger = logging.getLogger(__name__)
 
 # The autonomy layer only ever rotates in place or creeps forward.
-ALLOWED_COMMANDS = frozenset({"forward", "turn_left", "turn_right"})
+ALLOWED_COMMANDS = frozenset({"forward", "turn_left", "turn_right", "veer_left", "veer_right"})
 
 # Hard ceiling on a single pulse regardless of configuration: a typo in .env
 # must not turn "short pulse, then look" into a long blind drive.
@@ -69,15 +70,19 @@ class Motion:
         self._is_current = is_current        # must be called with the lock held
         self._current_phase = current_phase  # must be called with the lock held
 
-    def pulse(self, mission: Mission, command: str, speed: float, duration: float) -> bool:
+    def pulse(self, mission: Mission, command: str, speed: float, duration: float,
+              *, wheels: tuple[float, float] | None = None) -> bool:
         """Run one pulse. Returns True when it ran to completion, False when it
         was refused without touching the motors (phase does not allow motion).
         Raises MissionCancelled when the mission was invalidated before or
         during the pulse, MissionEnd for an unsafe vision/driver pairing."""
         if command not in ALLOWED_COMMANDS:
             raise ValueError(f"autonomy may not issue drive command {command!r}")
-        if not (duration > 0) or not (speed > 0):
+        if not math.isfinite(duration) or not math.isfinite(speed) or not (duration > 0) or not (speed > 0):
             raise ValueError("pulse speed and duration must be positive")
+        if wheels is not None and (not all(math.isfinite(v) and -1 <= v <= 1 for v in wheels)
+                                   or wheels == (0.0, 0.0)):
+            raise ValueError("wheel commands must be finite, bounded and nonzero")
         duration = min(float(duration), MAX_PULSE_SECONDS)
         speed = min(float(speed), 1.0)
         ttl = duration + self._config.pulse_watchdog_margin_seconds
@@ -92,9 +97,12 @@ class Motion:
                 logger.error("search %s: refused %s pulse in phase %s", mission.search_id, command, phase.value)
                 return False
             mission.moved_since_candidate = True
-            if command == "forward":
+            if command in {"forward", "veer_left", "veer_right"}:
                 mission.translated = True
-            self._drive.drive(command, speed, ttl=ttl)
+            if wheels is None:
+                self._drive.drive(command, speed, ttl=ttl)
+            else:
+                self._drive.set_speeds(*wheels, command=command, ttl=ttl)
 
         # Outside the lock: a stop/cancel sets the event and we wake at once.
         mission.cancel_event.wait(duration)

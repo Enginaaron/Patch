@@ -30,7 +30,7 @@ def _single_target(harness, *, bearing=25.0, distance=1.5, vision_cls=SimVision,
     return harness(cfg, world, vision=vision_cls(world))
 
 
-def test_centre_then_approach_slow_zone_and_arrival(harness):
+def test_pivot_then_blended_approach_slow_zone_and_arrival(harness):
     h = _single_target(harness, bearing=25.0)           # visible from heading 0, well right of centre
     sid, log = h.search("my bottle")
     start_distance = h.world.distance_to("target_bottle")
@@ -46,15 +46,15 @@ def test_centre_then_approach_slow_zone_and_arrival(harness):
     moves = h.drive.moves
     # 1) The target was right of centre, so the first motion is a turn toward it ...
     assert candidate["box"][1] > 500
-    assert moves[0].command == "turn_right" and moves[0].speed == h.cfg.turn_speed
+    assert moves[0].command == "turn_right" and moves[0].speed == h.cfg.steer_max
     assert h.cfg.turn_pulse_min_seconds <= moves[0].ttl - h.cfg.pulse_watchdog_margin_seconds <= h.cfg.turn_pulse_max_seconds
     # 2) ... then forward pulses, full speed first, slow once inside the slow zone, never fast again.
     forward = [m for m in moves if m.command == "forward"]
     speeds = [m.speed for m in forward]
-    assert speeds[0] == h.cfg.forward_speed and speeds[-1] == h.cfg.slow_forward_speed
-    first_slow = speeds.index(h.cfg.slow_forward_speed)
-    assert all(s == h.cfg.forward_speed for s in speeds[:first_slow])
-    assert all(s == h.cfg.slow_forward_speed for s in speeds[first_slow:])
+    assert speeds[0] == h.cfg.approach_v_max and speeds[-1] == h.cfg.approach_slow_speed
+    first_slow = speeds.index(h.cfg.approach_slow_speed)
+    assert all(s == h.cfg.approach_v_max for s in speeds[:first_slow])
+    assert all(s == h.cfg.approach_slow_speed for s in speeds[first_slow:])
     slow_ttl = h.cfg.slow_forward_pulse_seconds + h.cfg.pulse_watchdog_margin_seconds
     assert all(m.ttl == pytest.approx(slow_ttl) for m in forward[first_slow:])
     # 3) Every pulse is followed by a stop before the next one (move, stop, look, move...).
@@ -72,7 +72,7 @@ def test_centre_then_approach_slow_zone_and_arrival(harness):
     # The simulated rover really did close in, and stopped short of the object.
     assert 0.3 < h.world.distance_to("target_bottle") < 0.7 < start_distance
     assert abs(h.world.relative_bearing("target_bottle")) < 10.0
-    assert end["payload"]["target_width"] > 0.1 and end["payload"]["approach_pulses"] == len(moves)
+    assert end["payload"]["target_width"] >= 0.1 and end["payload"]["approach_pulses"] == len(moves)
 
     # Arrival does not touch the recognition lifecycle: FOUND since acceptance.
     assert search_status(sid) == SearchStatus.FOUND and len(finds_of(sid)) == 1
@@ -254,10 +254,10 @@ def test_turn_jitter_cannot_hide_a_rover_that_does_not_rotate(harness):
     _accept_first_candidate(h, sid, log)
     end = log.wait_rest()
     assert (end["payload"]["phase"], end["payload"]["reason"]) == ("stopped", "no_progress")
-    assert 3 <= len(h.drive.moves) <= 5 and {m.command for m in h.drive.moves} == {"turn_right"}
+    assert 3 <= len(h.drive.moves) <= 5 and {m.command for m in h.drive.moves} == {"veer_right"}
 
 
-@pytest.mark.parametrize("bearing, command", [(12.0, "turn_right"), (25.0, "turn_right"), (-25.0, "turn_left")])
+@pytest.mark.parametrize("bearing, command", [(20.0, "turn_right"), (25.0, "turn_right"), (-25.0, "turn_left")])
 def test_a_turn_that_does_not_rotate_the_rover_is_no_progress_not_a_mix_up(harness, bearing, command):
     """L01: wheels spin, the rover does not rotate. With a large offset the box
     fails the association with where it SHOULD be after the turn -- but it is

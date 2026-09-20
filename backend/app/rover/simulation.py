@@ -81,6 +81,7 @@ class _Motion:
     ttl: float | None
     started: float
     origin: tuple[float, float, float]
+    wheels: tuple[float, float] | None = None
 
 
 class SimWorld:
@@ -212,8 +213,29 @@ class SimWorld:
             self._pose = self._integrate(motion, elapsed)
             self._motion = None
 
+    def apply_wheels(self, left: float, right: float, command: str, ttl: float | None) -> None:
+        with self.lock:
+            self.apply_command(command, max(abs(left), abs(right)), ttl)
+            if self._motion is not None:
+                self._motion.wheels = (left, right)
+
     def _integrate(self, motion: _Motion, elapsed: float) -> tuple[float, float, float]:
         x, y, heading = motion.origin
+        if motion.wheels is not None:
+            left, right = motion.wheels
+            v = 0.0 if self.stuck else (self.forward_metres_per_second * (left + right) / 2
+                                       / max(self.reference_forward_speed, 1e-6))
+            omega = 0.0 if self.turn_stuck else math.radians(
+                self.turn_degrees_per_second * (left - right) / 2 / max(self.reference_turn_speed, 1e-6))
+            start = math.radians(heading)
+            end = start + omega * elapsed
+            if abs(omega) < 1e-9:
+                x += v * elapsed * math.sin(start)
+                y += v * elapsed * math.cos(start)
+            else:
+                x += v / omega * (math.cos(start) - math.cos(end))
+                y += v / omega * (math.sin(end) - math.sin(start))
+            return x, y, math.degrees(end)
         turn_rate = (
             0.0 if self.turn_stuck else self.turn_degrees_per_second * motion.speed / max(self.reference_turn_speed, 1e-6)
         )
@@ -345,6 +367,9 @@ class SimDrive:
     def stop(self) -> None:
         self._world.halt()
 
+    def set_speeds(self, left: float, right: float, command: str = "custom", ttl: float | None = None) -> None:
+        self._world.apply_wheels(left, right, command, ttl)
+
 
 @dataclass(frozen=True)
 class DriveRecord:
@@ -352,6 +377,8 @@ class DriveRecord:
     speed: float | None
     ttl: float | None
     at: float               # time.monotonic() when the call arrived
+    left: float | None = None
+    right: float | None = None
 
 
 class RecordingDrive:
@@ -376,6 +403,10 @@ class RecordingDrive:
     def stop(self) -> None:
         self._record(DriveRecord("stop", None, None, time.monotonic()))
         self._inner.stop()
+
+    def set_speeds(self, left: float, right: float, command: str = "custom", ttl: float | None = None) -> None:
+        self._record(DriveRecord(command, max(abs(left), abs(right)), ttl, time.monotonic(), left, right))
+        self._inner.set_speeds(left, right, command=command, ttl=ttl)
 
     def _record(self, record: DriveRecord) -> None:
         with self._cond:
@@ -420,6 +451,10 @@ class TeeDrive:
             self._primary.stop()
         finally:
             self._mirror.stop()
+
+    def set_speeds(self, left: float, right: float, command: str = "custom", ttl: float | None = None) -> None:
+        self._primary.set_speeds(left, right, command=command, ttl=ttl)
+        self._mirror.set_speeds(left, right, command=command, ttl=ttl)
 
 
 class SimCamera(CameraSource):

@@ -78,5 +78,9 @@ export function pickAnnouncement(detail: SearchDetail): Announcement | null {
     }
   }
 
+  if (status === 'SEARCHING' && movement.active) {
+    return { key: `${searchId}:looking`, text: `I'll look for ${detail.target_text}.` }
+  }
+
   return null
 }

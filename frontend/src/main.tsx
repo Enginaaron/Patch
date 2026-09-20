@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
+import VoiceOutput from './components/VoiceOutput'
 import SearchPage from './pages/SearchPage.tsx'
 import MemoryPage from './pages/MemoryPage.tsx'
 import ItemPage from './pages/ItemPage.tsx'
@@ -12,6 +13,7 @@ import DevBBoxPage from './pages/DevBBoxPage.tsx'
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
+      <VoiceOutput />
       <Routes>
         <Route path="/" element={<App />} />
         <Route path="/search/:searchId" element={<SearchPage />} />

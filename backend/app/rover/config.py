@@ -11,9 +11,47 @@ from dataclasses import dataclass
 
 from app.config import settings
 
+# Approach tuning. Error is -1..1 across the image: 0.24 = 12% of frame width.
+# Increase speed for faster travel; reduce it first if the rover overshoots.
+APPROACH_V_MAX = 0.55
+# Proportional differential wheel speed; reduce for left/right oscillation.
+STEER_KP = 0.70
+STEER_MAX = 0.35                 # Raise for stronger turns; capped by wheel limit.
+STEER_DEADZONE_ENTER = 0.24      # Enter straight driving within +/-12% of frame width.
+STEER_DEADZONE_EXIT = 0.30       # Steer again beyond +/-15%; widen to reduce chatter.
+STEER_PIVOT_ENTER = 0.55         # Only pivot for large error; raise to prefer arcs.
+STEER_PIVOT_EXIT = 0.50          # Resume arcs below this; lower for more pivot hysteresis.
+STEER_ERROR_SLOW = 0.90         # Larger = retain more forward speed while steering.
+STEER_FILTER_ALPHA = 0.55       # Lower = smoother but slower response; 1 disables filtering.
+APPROACH_MIN_MOTOR = 0.30       # Raise until BOTH wheels start reliably under load.
+APPROACH_WHEEL_MAX = 0.75       # Absolute requested wheel cap; lower to soften arcs.
+APPROACH_SLOW_SPEED = 0.35      # Forward speed near arrival; keep >= minimum effective PWM.
+ARC_TURN_FRACTION = 0.80        # Keep both wheels forward in an arc; raise for tighter arcs.
+ARRIVAL_ENTER_SCALE = 0.80      # Multiply category size thresholds; lower stops farther away.
+ARRIVAL_EXIT_SCALE = 0.70       # Must drop below this to leave arrival zone; keep < enter.
+LOST_TARGET_HOLD_SECONDS = 0.25 # Maximum in-flight command hold without a new observation.
+LOST_TARGET_TIMEOUT_SECONDS = 2.0 # Stationary retry window after a miss; lower gives up sooner.
+
 
 @dataclass
 class RoverConfig:
+    approach_v_max: float = APPROACH_V_MAX
+    steer_kp: float = STEER_KP
+    steer_max: float = STEER_MAX
+    steer_deadzone_enter: float = STEER_DEADZONE_ENTER
+    steer_deadzone_exit: float = STEER_DEADZONE_EXIT
+    steer_pivot_enter: float = STEER_PIVOT_ENTER
+    steer_pivot_exit: float = STEER_PIVOT_EXIT
+    steer_error_slow: float = STEER_ERROR_SLOW
+    steer_filter_alpha: float = STEER_FILTER_ALPHA
+    approach_min_motor: float = APPROACH_MIN_MOTOR
+    approach_wheel_max: float = APPROACH_WHEEL_MAX
+    approach_slow_speed: float = APPROACH_SLOW_SPEED
+    arc_turn_fraction: float = ARC_TURN_FRACTION
+    arrival_enter_scale: float = ARRIVAL_ENTER_SCALE
+    arrival_exit_scale: float = ARRIVAL_EXIT_SCALE
+    lost_target_hold_seconds: float = LOST_TARGET_HOLD_SECONDS
+    lost_target_timeout_seconds: float = LOST_TARGET_TIMEOUT_SECONDS
     # scanning
     turn_speed: float = 0.4
     turn_degrees_per_second: float = 85.0   # approximate, no encoders -- calibrate on the floor
