@@ -114,7 +114,29 @@ The live screen exposes all of this: a **STOP** button, **Cancel search** /
 **Resume**, the candidate question (buttons or hold-to-speak yes/no), the
 movement phase, and a **Controls** panel with a hold-to-drive teleop d-pad.
 
-## Not wired yet
+## Voice, memory, and deployment
 
-- **Voice:** speech-out via ElevenLabs and speech-in (mic) are stubbed in the UI
-  (`ELEVENLABS_API_KEY` has a home in `.env`). Text chat works today.
+Hold the microphone button on the home page to fill the search field, then
+submit it. On the search page, confirm or reject a candidate by button or voice.
+Speech uses the OMNI transcription/synthesis adapter. The memory gallery keeps
+confirmed finds; item pages support Find Again and a stationary Quick Check.
+Identification and physical arrival are separate states.
+
+Build the frontend on a development machine with `cd frontend && npm ci && npm run build`.
+Copy `frontend/dist/` to the same location in the Pi checkout. FastAPI serves the
+built app, API, media, and USB camera stream from port 8000; Node is not needed
+on the Pi. Run from `backend/` with the configured environment:
+
+```bash
+.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+For microphone access from your laptop, use an SSH tunnel and open localhost:
+
+```bash
+ssh -N -L 8765:127.0.0.1:8000 scout@scout.local
+```
+
+Open http://127.0.0.1:8765 while that tunnel is running. A direct HTTP connection
+to the Pi can show video but browsers generally require localhost or HTTPS for
+microphone capture. Startup does not resume movement automatically.
