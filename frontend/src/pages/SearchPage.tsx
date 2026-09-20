@@ -7,6 +7,7 @@ import ChatPanel from '../components/ChatPanel'
 import ControlPad from '../components/ControlPad'
 import useAnnouncer from '../hooks/useAnnouncer'
 import useVoice from '../hooks/useVoice'
+import { formatDate, formatTime } from '../utils/datetime'
 import { candidateQuestion, pickAnnouncement } from '../lib/announcements'
 import {
   isTerminalMessage,
@@ -490,6 +491,14 @@ function SearchView({ searchId }: { searchId: string | undefined }) {
 
       {search && movement && (
         <div className="live-screen__bottom">
+          {search.find && (
+            <section className="live-screen__card" aria-label="Saved find">
+              <p>{movement.phase === 'arrived' ? 'Arrived at your item' : 'Item identified and saved'}</p>
+              <img src={search.find.crop_url} alt={displayText} style={{ maxWidth: 120, maxHeight: 100, objectFit: 'contain' }} />
+              <p>{formatDate(search.find.found_at)} · {formatTime(search.find.found_at)}</p>
+              <button type="button" onClick={() => navigate('/memory')}>View memory</button>
+            </section>
+          )}
           {connectionLost && (
             <div className="live-screen__offline" role="status">
               Connection lost. Retrying…

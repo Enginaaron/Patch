@@ -1,0 +1,218 @@
+.item-page {
+  position: relative;
+  min-height: 100svh;
+  max-width: 430px;
+  margin: 0 auto;
+  padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.item-page__back {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: black;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.item-page__notice {
+  color: #999;
+  font-size: 15px;
+}
+
+.item-page__title {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-h, #08060d);
+  margin: 0 0 16px;
+}
+
+.item-page__photo {
+  width: 100%;
+  aspect-ratio: 1;
+  max-width: 240px;
+  object-fit: cover;
+  border-radius: 18px;
+  background: #f4f4f4;
+  display: block;
+  margin: 0 auto 16px;
+}
+
+.item-page__last-found {
+  font-size: 15px;
+  color: #666;
+  text-align: center;
+  margin: 0 0 28px;
+}
+
+.item-page__section {
+  margin-bottom: 24px;
+}
+
+.item-page__section-label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #999;
+  margin: 0 0 10px;
+  text-transform: uppercase;
+}
+
+.item-page__reference-photos {
+  display: flex;
+  gap: 8px;
+}
+
+.item-page__reference-photo {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: #f0f0f0;
+}
+
+.item-page__finds-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.item-page__finds-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.item-page__finds-photo {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #f0f0f0;
+  flex-shrink: 0;
+}
+
+.item-page__finds-time {
+  font-size: 14px;
+  color: var(--text-h, #08060d);
+}
+
+.item-page__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 32px;
+}
+
+.item-page__action {
+  flex: 1;
+  border: none;
+  border-radius: 22px;
+  padding: 14px 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  background: #2a2a2a;
+  color: white;
+  cursor: pointer;
+}
+
+.item-page__action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.item-page__mic {
+  flex-shrink: 0;
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  border: none;
+  background: #2a2a2a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.item-page__mic:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.item-page__mic--recording {
+  background: #e74c3c;
+  animation: item-page-mic-pulse 1s ease-in-out infinite;
+}
+
+@keyframes item-page-mic-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(231, 76, 60, 0);
+  }
+}
+
+.item-page__notice--error {
+  color: #c0392b;
+}
+
+/* Spec 19: a lightweight inline result, not a full-screen interrupt --
+   Quick Check is deliberately a single one-shot answer, not a state change
+   like the candidate/found overlays elsewhere in the app. */
+.quick-check-result {
+  border-radius: 16px;
+  padding: 16px;
+  margin-top: 20px;
+  text-align: center;
+  background: #eafaf1;
+}
+
+.quick-check-result--negative {
+  background: #fbeeee;
+}
+
+.quick-check-result__status {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-h, #08060d);
+  margin: 0 0 4px;
+}
+
+.quick-check-result__meta {
+  font-size: 13px;
+  color: #666;
+  margin: 0;
+}
+
+.quick-check-result__search-button {
+  border: none;
+  border-radius: 20px;
+  padding: 10px 20px;
+  margin-top: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  background: #2a2a2a;
+  color: white;
+  cursor: pointer;
+}
+
+.quick-check-result__search-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

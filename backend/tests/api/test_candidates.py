@@ -156,5 +156,5 @@ def test_a_candidate_without_a_location_can_be_asked_about_but_never_driven_to(c
 
     assert (rest["payload"]["phase"], rest["payload"]["reason"]) == ("target_lost", "no_box")
     body = detail(client, sid)
-    assert body["status"] == "FOUND" and body["terminal"] is False and body["can_resume"] is True
+    assert body["status"] == "FOUND" and body["terminal"] is False and body["can_resume"] is False
     assert h.drive.moves == [] and h.moves_since(accepted_at) == []   # not one motor command

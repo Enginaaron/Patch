@@ -105,6 +105,11 @@ def _save_search_image(search_id: str, image_bytes: bytes, suffix: str) -> str:
     return f"searches/{search_id}/{filename}"
 
 
+def _laplacian_variance(frame: np.ndarray) -> float:
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+
 def _meets_threshold(likelihood: str, threshold: str | None = None) -> bool:
     """``likelihood`` >= ``threshold`` (default: CANDIDATE_LIKELIHOOD_THRESHOLD)."""
     minimum = settings.candidate_likelihood_threshold if threshold is None else threshold

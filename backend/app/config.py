@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     candidate_likelihood_threshold: str = "high"
 
     local_detection_enabled: bool = True
+    blur_variance_threshold: float = 60.0
     local_detection_cooldown_seconds: float = 1.25
 
     # ElevenLabs voice (speech out) — wired later, kept here so the key has a home.

@@ -33,7 +33,7 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.db import get_session
-from app.models import Candidate, CandidateDecision, Item, ReferenceImage, RoverMovement, Search, SearchStatus
+from app.models import Candidate, CandidateDecision, Find, Item, ReferenceImage, RoverMovement, Search, SearchStatus
 from app.rover.controller import get_rover_controller
 from app.rover.geometry import is_valid_box
 from app.rover.types import (
@@ -91,6 +91,12 @@ class ResolvedTargetOut(BaseModel):
     resolver: str
 
 
+class FindOut(BaseModel):
+    image_url: str
+    crop_url: str
+    found_at: datetime
+
+
 class SearchDetailResponse(BaseModel):
     search_id: str
     item_id: str
@@ -105,6 +111,7 @@ class SearchDetailResponse(BaseModel):
     movement: dict[str, Any]   # MovementState.to_dict()
     can_resume: bool
     terminal: bool             # nothing about this search will change again
+    find: FindOut | None = None
 
 
 # --- helpers -----------------------------------------------------------------
@@ -180,6 +187,7 @@ def _build_search_detail(session: Session, search: Search) -> SearchDetailRespon
 
     controller = get_rover_controller()
     movement = controller.state_for(search.id)
+    latest_find = session.exec(select(Find).where(Find.search_id == search.id).order_by(Find.found_at.desc())).first()
 
     return SearchDetailResponse(
         search_id=search.id,
@@ -216,6 +224,8 @@ def _build_search_detail(session: Session, search: Search) -> SearchDetailRespon
         movement=movement.to_dict(),
         can_resume=controller.can_resume(search.id),
         terminal=_is_terminal(search.status, movement),
+        find=FindOut(image_url=f"/media/{latest_find.full_image_path}",
+                     crop_url=f"/media/{latest_find.crop_path}", found_at=latest_find.found_at) if latest_find else None,
     )
 
 
@@ -378,6 +388,24 @@ def get_search(search_id: str) -> SearchDetailResponse:
 
 
 # --- candidate decisions / resume / cancel ---------------------------------------
+
+
+def _candidate_search_id(candidate_id: str) -> str:
+    with get_session() as session:
+        candidate = session.get(Candidate, candidate_id)
+        if candidate is None:
+            raise HTTPException(status_code=404, detail="candidate not found")
+        return candidate.search_id
+
+
+@router.post("/candidates/{candidate_id}/confirm", response_model=SearchDetailResponse)
+def confirm_candidate_compat(candidate_id: str) -> SearchDetailResponse:
+    return accept_candidate(_candidate_search_id(candidate_id), candidate_id)
+
+
+@router.post("/candidates/{candidate_id}/reject", response_model=SearchDetailResponse)
+def reject_candidate_compat(candidate_id: str) -> SearchDetailResponse:
+    return reject_candidate(_candidate_search_id(candidate_id), candidate_id)
 
 
 @router.post("/searches/{search_id}/candidates/{candidate_id}/accept", response_model=SearchDetailResponse)

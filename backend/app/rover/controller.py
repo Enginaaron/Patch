@@ -834,6 +834,10 @@ class RoverController:
                     error, result = "vision returned a malformed result", None
 
         if error is None:
+            if mission.vision_errors:
+                with self._lock:
+                    if self._is_current(mission):
+                        self._publish(mission.search_id, {"type": "vision_recovered", "payload": {}})
             mission.vision_errors = 0
             return result
 
@@ -847,6 +851,8 @@ class RoverController:
             raise MissionEnd(
                 MovementPhase.ERROR, StopReason.INFERENCE_FAILED, "I can't reach my vision service — stopping"
             )
+        if mission.cancel_event.wait(min(2 ** mission.vision_errors, 30)):
+            raise MissionCancelled()
         return None
 
     def _identify(
@@ -1083,6 +1089,8 @@ class RoverController:
 
         started = time.monotonic()
         forward_stall = turn_stall = 0
+        progress_width, progress_height = geometry.width(track.box), geometry.height(track.box)
+        progress_offset = abs(geometry.offset_from_center(track.box))
         while True:
             self._check_search_status(mission, SearchStatus.FOUND)
 
@@ -1133,14 +1141,20 @@ class RoverController:
             # a timed pulse measures neither distance nor angle.
             fraction = cfg.min_progress_fraction
             if kind == "forward":
-                grew = geometry.width(track.box) >= geometry.width(before) * (1 + fraction) or geometry.height(
+                grew = geometry.width(track.box) >= progress_width * (1 + fraction) or geometry.height(
                     track.box
-                ) >= geometry.height(before) * (1 + fraction)
+                ) >= progress_height * (1 + fraction)
                 forward_stall = 0 if grew else forward_stall + 1
+                if grew:
+                    progress_width = max(progress_width, geometry.width(track.box))
+                    progress_height = max(progress_height, geometry.height(track.box))
                 turn_stall = 0  # driving forward legitimately changes the offset
+                progress_offset = abs(geometry.offset_from_center(track.box))
             else:
-                shrank = abs(geometry.offset_from_center(track.box)) <= abs(offset) * (1 - fraction)
+                shrank = abs(geometry.offset_from_center(track.box)) <= progress_offset * (1 - fraction)
                 turn_stall = 0 if shrank else turn_stall + 1
+                if shrank:
+                    progress_offset = min(progress_offset, abs(geometry.offset_from_center(track.box)))
             if forward_stall >= cfg.stall_pulses or turn_stall >= cfg.stall_pulses:
                 raise MissionEnd(MovementPhase.STOPPED, StopReason.NO_PROGRESS, "I'm not getting any closer — stopping")
 
@@ -1238,7 +1252,11 @@ class RoverController:
             usable = result.found and search_worker._meets_threshold(result.likelihood, cfg.approach_min_likelihood)
             if usable and result.box is not None and geometry.is_valid_box(result.box):
                 observed = LocalDetection(box=list(result.box), confidence=1.0)
-                if geometry.associate([observed], predicted, cfg).match is None:
+                # A stalled turn leaves the confirmed target in its old place.
+                # Accept that observation only after OMNI revalidation, then
+                # let the progress budget stop the wheels.
+                if (geometry.associate([observed], predicted, cfg).match is None
+                        and geometry.associate([observed], track.box, cfg).match is None):
                     raise MissionEnd(
                         MovementPhase.TARGET_LOST,
                         StopReason.IDENTITY_UNCERTAIN,

@@ -212,7 +212,10 @@ def test_slow_but_real_progress_is_never_no_progress(harness, distance, metres_p
     target (or by a slow rover, or inside the slow zone) grows the box by less
     than min_progress_fraction per pulse. That is progress, not a stall."""
     cfg = fast_config(approach_max_pulses=200, approach_max_seconds=60.0)
-    assert metres_per_pulse / (distance - metres_per_pulse) < cfg.min_progress_fraction
+    # The near-target case drops below the threshold in the slow zone, not
+    # necessarily on its very first full-speed pulse.
+    slow_step = metres_per_pulse * (cfg.slow_forward_speed / cfg.forward_speed) * (cfg.slow_forward_pulse_seconds / cfg.forward_pulse_seconds)
+    assert slow_step / (distance - slow_step) < cfg.min_progress_fraction
     world = make_world(cfg, metres_per_pulse=metres_per_pulse)
     add_bottle(world, bearing=0.0, distance=distance, is_target=True)
     h = harness(cfg, world)

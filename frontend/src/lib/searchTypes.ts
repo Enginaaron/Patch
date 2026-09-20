@@ -69,6 +69,7 @@ export interface ResolvedTargetOut {
 }
 
 export interface SearchDetail {
+  find?: { image_url: string; crop_url: string; found_at: string } | null
   search_id: string
   item_id: string
   target_text: string
@@ -147,6 +148,7 @@ export function normalizeSearchDetail(body: unknown): SearchDetail | null {
     reference_images: raw.reference_images ?? [],
     pending_candidate: raw.pending_candidate ?? null,
     accepted_candidate: raw.accepted_candidate ?? null,
+    find: raw.find ?? null,
     resolved_target: raw.resolved_target ?? null,
     movement,
     can_resume: raw.can_resume ?? false,

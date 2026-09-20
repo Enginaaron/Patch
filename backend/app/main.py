@@ -32,12 +32,13 @@ from typing import Iterator
 import cv2
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.db import init_db
 from app.routers.chat import router as chat_router
+from app.routers.memory import router as memory_router
 from app.routers.control import router as control_router
 from app.routers.searches import router as searches_router
 from app.routers.speech import router as speech_router
@@ -120,6 +121,7 @@ app.include_router(searches_router)
 app.include_router(chat_router)
 app.include_router(control_router)
 app.include_router(speech_router)
+app.include_router(memory_router)
 
 Path(settings.media_root).mkdir(parents=True, exist_ok=True)
 app.mount("/media", StaticFiles(directory=settings.media_root), name="media")
@@ -198,3 +200,29 @@ def video():
         return JSONResponse(status_code=503, content={"error": camera_service.error() or "camera unavailable"})
 
     return StreamingResponse(_mjpeg_frames(), media_type="multipart/x-mixed-replace; boundary=frame")
+
+
+# A built frontend can be served by the Pi without installing Node there.
+# Register last so API, camera, and media routes retain priority.
+_frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+
+
+@app.get("/assets/{path:path}", include_in_schema=False)
+def frontend_asset(path: str):
+    path = f"assets/{path}"
+    requested = (_frontend_dist / path).resolve()
+    if requested.is_relative_to(_frontend_dist.resolve()) and requested.is_file():
+        return FileResponse(requested)
+    return JSONResponse(status_code=404, content={"detail": "Asset not found"})
+
+
+@app.get("/", include_in_schema=False)
+@app.get("/memory", include_in_schema=False)
+@app.get("/search/{path}", include_in_schema=False)
+@app.get("/items/{path}", include_in_schema=False)
+@app.get("/dev/{path}", include_in_schema=False)
+def frontend(path: str = ""):
+    index = _frontend_dist / "index.html"
+    if index.is_file():
+        return FileResponse(index)
+    return JSONResponse(status_code=404, content={"detail": "Frontend not built; run npm run build in frontend"})

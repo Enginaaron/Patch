@@ -118,6 +118,13 @@ class LiveVision:
             raise RuntimeError("OMNI_API_KEY is not set")
 
         resized_frame, scene_jpeg = self._prepare(packet.frame)
+        # Preserve aa_dev's blur gate on real camera frames. A rejected frame
+        # causes a stationary retry, never a no-match that authorizes movement.
+        if self._prepare_frame is not None and hasattr(resized_frame, "shape"):
+            from app.services.search_worker import _laplacian_variance
+
+            if _laplacian_variance(resized_frame) < settings.blur_variance_threshold:
+                raise RuntimeError("Camera image is too blurry; keep the camera clear and steady")
         detect_text_only, detect_personalized = self._omni()
         rejected = list(request.rejected) or None
 

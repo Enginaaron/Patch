@@ -8,6 +8,8 @@ backend/data/items/
 backend/data/searches/
 backend/data/finds/
 backend/data/speech/
+backend/data/sim/
+backend/data/media/
 backend/test_assets/
 backend/*.pt
 backend/yolov8n.pt

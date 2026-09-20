@@ -17,6 +17,8 @@ os.environ["MOTOR_DRIVER"] = "sim"
 os.environ["OMNI_API_KEY"] = ""          # never call the real gateway from tests
 os.environ["ROVER_SIMULATION"] = "false"
 os.environ["DRIVE_MANUAL_TTL_SECONDS"] = "2.0"
+# Synthetic frames intentionally have flat fills, unlike a textured camera image.
+os.environ["BLUR_VARIANCE_THRESHOLD"] = "0"
 
 import pytest  # noqa: E402
 

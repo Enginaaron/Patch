@@ -96,7 +96,14 @@ def _ask_provider(raw_text: str, context: ComprehensionContext) -> ResolvedTarge
         )
         return None
     # Stamp the registered name so callers can always tell who resolved it.
-    return replace(result, resolver=name)
+    category = result.category
+    if category is not None:
+        normalized = category.strip().lower() if isinstance(category, str) else None
+        if normalized not in set(COCO_TARGET_MAP.values()):
+            logger.warning("comprehension provider %r returned unsupported category %r", name, category)
+            normalized = None
+        category = normalized
+    return replace(result, resolver=name, category=category)
 
 
 def resolve_target(raw_text: str, context: ComprehensionContext | None = None) -> ResolvedTarget:
@@ -272,7 +279,7 @@ def _parse(raw_text: str) -> _Parse:
         for part in re.split(r"\band\b", segment):
             landmark = _strip_determiners(part.strip())
             # "next to it" names nothing; keep only landmarks that do.
-            if landmark and not _is_reference_only(landmark) and landmark not in landmarks:
+            if landmark and not _is_reference_only(landmark) and not all(w in _NOT_A_PLACE_WORDS for w in landmark.split()) and landmark not in landmarks:
                 landmarks.append(landmark)
     return _Parse(request, head, _strip_determiners(head), tuple(landmarks))
 
@@ -293,7 +300,12 @@ def category_for_phrase(phrase: str) -> str | None:
     COCO_TARGET_MAP keywords (simple plurals allowed), longest keyword first.
     None when nothing matches or when two different classes do -- ambiguity
     goes to OMNI sampling rather than screening for the wrong thing."""
-    text = _normalize(phrase)
+    text = _strip_determiners(_normalize(phrase))
+    if _CONJUNCTION_RE.search(text):
+        return None
+    ender = _HEAD_NOUN_END_RE.search(text)
+    if ender:
+        text = text[:ender.start()]
     claimed: list[tuple[int, int]] = []
     classes: set[str] = set()
     for keyword in sorted(COCO_TARGET_MAP, key=len, reverse=True):
