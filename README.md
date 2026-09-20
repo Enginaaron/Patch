@@ -54,6 +54,38 @@ The request is built against the common OpenAI-compatible multimodal chat shape
 (text + `image_url` parts). If the OMNI gateway expects a different envelope,
 `_generate_live` in `omni_service.py` is the one place to adjust it.
 
+## Driving & autonomous search
+
+Same "works today, real later" pattern as the chat. The drive stack has a
+pluggable `MotorDriver` (`backend/app/motors/`):
+
+- **`sim` (default):** logs the intended left/right wheel speeds — develop and
+  demo the whole loop on a laptop, no hardware needed.
+- **`gpio`:** drives a real differential base over a two-motor H-bridge
+  (TB6612 / L298N style) via `gpiozero`. Set `MOTOR_DRIVER=gpio`, confirm the
+  `MOTOR_*` pins in `.env`, and `pip install gpiozero` on the Pi.
+
+Endpoints:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/drive` | Manual teleop: `{command, speed}` where command is `forward`, `backward`, `turn_left`, `turn_right`, `veer_left`, `veer_right`, `stop`. Cancels any running search. |
+| `POST` | `/api/drive/stop` | Stop the wheels. |
+| `GET`  | `/api/drive/state` | Current command + wheel speeds. |
+| `POST` | `/api/searches/{id}/start-auto` | Start autonomous search for `{target_text}`. |
+| `POST` | `/api/searches/stop-auto` | Stop the search. |
+| `GET`  | `/api/searches/auto-status` | Live phase / message / confidence. |
+
+**The search loop** (`backend/app/services/search_service.py`) runs closed-loop
+on vision: each tick it grabs the current frame, asks
+`OmniLiveService.locate_target` where the target is (`x`, `size`, `confidence`),
+then steers — rotate to **scan**, turn to **center**, drive to **approach**, and
+**stop** once the target fills enough of the frame. With no OMNI key the locate
+step is simulated so the rover visibly scans, centers, and arrives in demo mode.
+
+The live screen exposes all of this: a **Controls** panel with a teleop d-pad,
+an **Auto search** toggle, and the live search phase/confidence.
+
 ## Not wired yet
 
 - **Voice:** speech-out via ElevenLabs and speech-in (mic) are stubbed in the UI

@@ -26,5 +26,25 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = ""
 
+    # Drive / motors. "sim" logs intended wheel speeds and needs no hardware;
+    # "gpio" drives a real differential base once the wiring is finalized.
+    motor_driver: str = "sim"  # "sim" | "gpio"
+    drive_max_speed: float = 1.0  # ceiling applied to every command, 0..1
+    # BCM pin numbers for a two-motor H-bridge (e.g. TB6612/L298N), gpio driver only.
+    motor_left_pwm_pin: int = 12
+    motor_left_dir_pin: int = 5
+    motor_right_pwm_pin: int = 13
+    motor_right_dir_pin: int = 6
+    motor_pwm_hz: int = 1000
+
+    # Autonomous search tuning.
+    search_interval_seconds: float = 0.6  # how often the loop looks + steers
+    search_scan_speed: float = 0.5        # rotate-in-place speed while looking
+    search_turn_speed: float = 0.45       # rotate speed while centering the target
+    search_forward_speed: float = 0.55    # approach speed once centered
+    search_center_tolerance: float = 0.12  # |x-0.5| under this counts as centered
+    search_arrival_size: float = 0.45     # target width fraction that means "arrived"
+    search_min_confidence: float = 0.35   # ignore detections below this
+
 
 settings = Settings()

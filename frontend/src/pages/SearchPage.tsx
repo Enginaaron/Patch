@@ -1,7 +1,8 @@
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Image, Plus, Search } from 'lucide-react'
 import CameraFeed from '../components/CameraFeed'
 import ChatPanel from '../components/ChatPanel'
+import ControlPad from '../components/ControlPad'
 import './SearchPage.css'
 
 interface SearchNavState {
@@ -12,6 +13,7 @@ interface SearchNavState {
 function SearchPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { searchId } = useParams()
   const { targetText, previewUrl } = (location.state as SearchNavState | null) ?? {}
   const displayText = targetText ?? 'your item'
 
@@ -70,6 +72,7 @@ function SearchPage() {
         </div>
       </div>
 
+      <ControlPad searchId={searchId} targetText={targetText} />
       <ChatPanel targetText={targetText} />
     </main>
   )

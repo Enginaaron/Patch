@@ -17,6 +17,7 @@ Nothing else in the app needs to know which mode is active. Drop the key in
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import re
 from dataclasses import dataclass, field
@@ -38,6 +39,24 @@ class ChatMessage:
 class OmniReply:
     reply: str
     saw: list[str] = field(default_factory=list)
+    mode: str = "demo"  # "live" | "demo"
+
+
+@dataclass
+class TargetLocation:
+    """Where the search target is in the current frame.
+
+    ``x`` is the horizontal centre, 0.0 = far left, 1.0 = far right. ``size`` is
+    the fraction of the frame width the target spans (a rough distance proxy —
+    bigger means closer). ``done`` means Patch is close enough to declare a find.
+    """
+
+    found: bool
+    x: float = 0.5
+    size: float = 0.0
+    confidence: float = 0.0
+    done: bool = False
+    note: str = ""
     mode: str = "demo"  # "live" | "demo"
 
 
@@ -138,6 +157,92 @@ class OmniLiveService:
             reply = "".join(part.get("text", "") for part in reply)
 
         return OmniReply(reply=reply.strip(), saw=[], mode="live")
+
+    # --- target localisation (drives the autonomous search loop) ---------
+
+    def locate_target(
+        self,
+        *,
+        target_text: str,
+        frame_jpeg: bytes | None,
+        tick: int = 0,
+    ) -> TargetLocation:
+        """Report where ``target_text`` is in the current frame.
+
+        Synchronous so the search loop (a background thread) can call it
+        directly. Uses the real model when keyed, otherwise a deterministic
+        simulation driven by ``tick`` so the whole search loop is demoable.
+        """
+        if self.enabled:
+            try:
+                return self._locate_live(target_text, frame_jpeg)
+            except Exception:  # noqa: BLE001
+                logger.exception("OMNI Live locate failed; using demo locate")
+        return self._locate_demo(target_text, tick)
+
+    def _locate_live(self, target_text: str, frame_jpeg: bytes | None) -> TargetLocation:
+        instruction = (
+            "You are the vision system of a rover. Find this object in the image: "
+            f"{target_text!r}. Reply with ONLY a JSON object, no prose, with keys: "
+            "found (bool), x (0..1 horizontal centre of the object, 0=left 1=right), "
+            "size (0..1 fraction of image width the object spans), "
+            "confidence (0..1), done (bool, true if the object fills much of the "
+            "frame and is centred), note (short string)."
+        )
+        content: list | str = instruction
+        if frame_jpeg:
+            b64 = base64.b64encode(frame_jpeg).decode("ascii")
+            content = [
+                {"type": "text", "text": instruction},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+            ]
+
+        url = settings.omni_base_url.rstrip("/") + "/" + settings.omni_chat_path.lstrip("/")
+        payload = {
+            "model": settings.omni_model,
+            "messages": [{"role": "user", "content": content}],
+            "max_tokens": 200,
+            "temperature": 0.0,
+        }
+        headers = {"Authorization": f"Bearer {self._api_key}"}
+
+        with httpx.Client(timeout=settings.omni_timeout_seconds) as client:
+            resp = client.post(url, json=payload, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+
+        raw = data["choices"][0]["message"]["content"]
+        if isinstance(raw, list):
+            raw = "".join(part.get("text", "") for part in raw)
+        parsed = json.loads(re.search(r"\{.*\}", raw, re.DOTALL).group(0))
+        return TargetLocation(
+            found=bool(parsed.get("found", False)),
+            x=float(parsed.get("x", 0.5)),
+            size=float(parsed.get("size", 0.0)),
+            confidence=float(parsed.get("confidence", 0.0)),
+            done=bool(parsed.get("done", False)),
+            note=str(parsed.get("note", "")),
+            mode="live",
+        )
+
+    def _locate_demo(self, target_text: str, tick: int) -> TargetLocation:
+        """Simulate a search: scan a few ticks, spot the target off to one side,
+        centre it, then close in — so the drive loop visibly does its thing."""
+        if tick < 3:
+            return TargetLocation(
+                found=False, confidence=0.1, note="scanning…", mode="demo"
+            )
+
+        progress = tick - 3
+        # Enters from the left, converges to centre over a few ticks.
+        x = min(0.5, 0.18 + 0.08 * progress)
+        size = min(settings.search_arrival_size, 0.14 + 0.05 * progress)
+        confidence = min(0.9, 0.55 + 0.05 * progress)
+        done = size >= settings.search_arrival_size
+        note = "arrived" if done else f"found {target_text}, closing in"
+        return TargetLocation(
+            found=True, x=x, size=size, confidence=confidence, done=done, note=note, mode="demo"
+        )
 
     # --- demo / fake -----------------------------------------------------
 

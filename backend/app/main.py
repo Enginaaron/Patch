@@ -9,15 +9,21 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.db import init_db
 from app.routers.chat import router as chat_router
+from app.routers.control import router as control_router
 from app.routers.searches import router as searches_router
 from app.services.camera_service import camera_service
+from app.services.drive_service import drive_service
+from app.services.search_service import search_service
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
     camera_service.start()
+    drive_service.start()
     yield
+    search_service.stop()
+    drive_service.close()
     camera_service.stop()
 
 
@@ -33,6 +39,7 @@ app.add_middleware(
 
 app.include_router(searches_router)
 app.include_router(chat_router)
+app.include_router(control_router)
 
 
 @app.get("/api/health")
