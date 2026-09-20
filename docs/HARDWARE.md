@@ -135,6 +135,34 @@ Fixes:
 - The **wrong wheel** moves (left command drives the right wheel) → swap the
   A01/A02 pair with B01/B02 on the TB6612.
 
+### Balancing unequal wheel speeds
+
+The drive service applies `MOTOR_LEFT_SCALE` and `MOTOR_RIGHT_SCALE` to every
+wheel command, including manual controls and autonomous movement. Defaults are
+1.0. These adjust PWM power, not measured wheel RPM; there is no encoder feedback.
+The final output still respects `DRIVE_MAX_SPEED`, and stop remains zero.
+
+First run both wheels together (the individual-wheel test intentionally turns):
+
+```bash
+python -m scripts.test_motors --command forward --speed 0.5 --duration 2
+```
+
+If the LEFT wheel is weaker, try reducing the right wheel:
+
+```bash
+python -m scripts.test_motors --command forward --speed 0.5 --duration 2 --right-scale 0.85
+```
+
+If the RIGHT wheel is weaker, use `--left-scale 0.85` instead. These are trial
+values, not measured calibration. Adjust in small increments and also check
+backward movement. CLI overrides only last for that test. Save the chosen values
+as `MOTOR_LEFT_SCALE` / `MOTOR_RIGHT_SCALE` in `backend/.env`, then restart the
+backend. Multipliers above 1 (up to 2) are supported, but reducing the stronger
+wheel is a useful first trial. Calibration cannot repair a loose connection,
+binding wheel, or inadequate battery supply. Stop other motor-control processes
+before running the standalone test.
+
 Then run the app:
 
 ```bash
@@ -149,9 +177,38 @@ npm install
 npm run dev -- --host      # then open http://scout.local:5173 on your laptop
 ```
 
-The live screen's **Controls** panel now drives the real wheels: the d-pad is
-teleop, **Auto search** runs the vision loop. (Search uses fake vision until
-`OMNI_API_KEY` is set — see the main README.)
+The live screen's **Controls** panel now drives the real wheels: hold a d-pad
+button to move, release to stop. Manual commands carry a server-side deadman
+(`DRIVE_MANUAL_TTL_SECONDS`, 2 s by default): the wheels stop by themselves
+unless the command keeps being re-sent, which the d-pad does while held.
+
+Starting a search from the home screen makes the rover move **by itself** (scan
+turns, then short forward pulses toward the item you confirmed). The red
+**STOP** button on the search screen halts it at once, and touching the d-pad
+takes over from it. With real motors the search needs `OMNI_API_KEY`: there is
+no fake vision on this path, and `ROVER_SIMULATION=true` refuses to start unless
+`MOTOR_DRIVER=sim`. Design and limits: [`AUTONOMY.md`](AUTONOMY.md). Autonomous
+movement has so far only been exercised in simulation, not on the physical rover.
+
+### Calibrating the turn rate for autonomous search
+
+There are no wheel encoders, so the controller estimates how far it has turned
+from pulse time alone: `ROVER_TURN_DEGREES_PER_SECOND` (default 85, a guess) at
+`ROVER_TURN_SPEED` (default 0.4). It sizes the centring pulses and the memory of
+where a rejected object was, so measure it on the floor the rover will drive on,
+after the wheel scales above are set:
+
+```bash
+python -m scripts.test_motors --command turn_right --speed 0.4 --duration 2
+```
+
+Mark the heading before and after, estimate the angle turned, divide by the
+duration, and put the result in `backend/.env`. It stays an approximation
+(battery level, floor and wheel slip all change it), which is why the rover
+re-checks the camera after every short pulse instead of trusting the number.
+The proximity thresholds that decide "arrived" (`ROVER_PROXIMITY_PROFILES_JSON`)
+are uncalibrated starting points too; an apparent size in the image is not a
+measured distance.
 
 ### Optional: auto-start the backend on boot
 
@@ -196,4 +253,7 @@ sudo systemctl enable --now patch.service
 4. Wheels **off the ground**, connect the motor battery.
 5. `python -m scripts.test_motors`, calibrate invert/swap.
 6. Start backend + frontend, drive from the Controls d-pad.
-7. Put it on the floor and try **Auto search**.
+7. Put it on the floor in a clear area, calibrate the turn rate (section 5),
+   then start a search from the home screen with a hand on the **STOP** button.
+   Autonomous movement has not been verified on the physical rover yet, and
+   there is no obstacle avoidance.

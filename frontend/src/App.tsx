@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { AlignLeft, ArrowUp, CirclePlus, Mic, X } from 'lucide-react'
 import logoMark from './assets/logo-mark.svg'
 import useVoice from './hooks/useVoice'
+import { readApiError } from './lib/searchTypes'
 import './App.css'
 
 type ConnectionStatus = 'checking' | 'connected' | 'disconnected'
@@ -14,6 +15,15 @@ interface ReferenceImageSlot {
   previewUrl: string
 }
 
+// 409 rover_busy: Patch has one body, so one search at a time. Starting
+// another means stopping and cancelling the running one -- the user decides.
+interface BusyPrompt {
+  activeSearchId: string | null
+  activeTargetText: string
+}
+
+const DEFAULT_CLARIFICATION = 'Which item do you mean? Tell me what it is.'
+
 function App() {
   const navigate = useNavigate()
   const [status, setStatus] = useState<ConnectionStatus>('checking')
@@ -21,13 +31,28 @@ function App() {
   const [images, setImages] = useState<ReferenceImageSlot[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [busyPrompt, setBusyPrompt] = useState<BusyPrompt | null>(null)
+  const [clarification, setClarification] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const { isRecording, isTranscribing, startRecording, stopRecording } = useVoice({
+  // Both prompts are about the text that was submitted; once it changes they
+  // no longer apply.
+  const updateTargetText = (text: string) => {
+    setTargetText(text)
+    setBusyPrompt(null)
+    setClarification(null)
+  }
+
+  const { isRecording, isTranscribing, startRecording, stopRecording, speak, stopSpeaking } = useVoice({
     onTranscript: (transcript) => {
-      if (transcript) setTargetText(transcript)
+      if (transcript) updateTargetText(transcript)
     },
   })
+
+  const beginRecording = () => {
+    stopSpeaking() // don't record Patch's own question back into the search box
+    startRecording().catch(() => setError('Microphone unavailable'))
+  }
 
   useEffect(() => {
     fetch('/api/health')
@@ -57,21 +82,49 @@ function App() {
     })
   }
 
-  const submitSearch = async () => {
+  const submitSearch = async (replaceActive = false) => {
     const text = targetText.trim()
     if (!text || submitting) return
 
     setSubmitting(true)
     setError(null)
+    setBusyPrompt(null)
+    setClarification(null)
     try {
       const formData = new FormData()
       formData.append('target_text', text)
       images.forEach((img) => formData.append('reference_images', img.file))
+      if (replaceActive) formData.append('replace_active', 'true')
 
       const res = await fetch('/api/searches', { method: 'POST', body: formData })
       if (!res.ok) {
-        const body = await res.json().catch(() => null)
-        throw new Error(body?.detail ?? 'Failed to start search')
+        const body: unknown = await res.json().catch(() => null)
+        const { code, message, fields } = readApiError(body)
+
+        if (res.status === 409 && code === 'rover_busy') {
+          // Nothing was created. Ask before taking the rover away from the
+          // search it is on; "replace" resubmits with replace_active=true.
+          setBusyPrompt({
+            activeSearchId: typeof fields.active_search_id === 'string' ? fields.active_search_id : null,
+            activeTargetText: typeof fields.active_target_text === 'string' ? fields.active_target_text : '',
+          })
+          setSubmitting(false)
+          return
+        }
+
+        if (res.status === 422 && code === 'needs_clarification') {
+          // "the other one", "that one"… -- a transcript cannot tell us which
+          // object that is, so ask instead of searching for a guess. No search
+          // exists yet: stay here.
+          const question =
+            typeof fields.question === 'string' && fields.question ? fields.question : DEFAULT_CLARIFICATION
+          setClarification(question)
+          speak(question)
+          setSubmitting(false)
+          return
+        }
+
+        throw new Error(message ?? 'Failed to start search')
       }
       const data = await res.json()
       navigate(`/search/${data.search_id}`)
@@ -110,7 +163,7 @@ function App() {
           className="search-bar__input"
           placeholder="i'm looking for my...."
           value={targetText}
-          onChange={(e) => setTargetText(e.target.value)}
+          onChange={(e) => updateTargetText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault()
@@ -163,12 +216,12 @@ function App() {
               aria-label={isRecording ? 'Recording… release to stop' : 'Hold to speak'}
               title={isTranscribing ? 'Transcribing…' : 'Hold to speak'}
               disabled={isTranscribing}
-              onMouseDown={startRecording}
+              onMouseDown={beginRecording}
               onMouseUp={stopRecording}
-              onMouseLeave={() => isRecording && stopRecording()}
+              onMouseLeave={stopRecording}
               onTouchStart={(e) => {
                 e.preventDefault()
-                startRecording()
+                beginRecording()
               }}
               onTouchEnd={(e) => {
                 e.preventDefault()
@@ -188,6 +241,45 @@ function App() {
           </div>
         </div>
       </form>
+
+      {clarification && (
+        <p className="form-clarify" role="status">
+          {clarification}
+        </p>
+      )}
+
+      {busyPrompt && (
+        <div className="busy-prompt" role="alertdialog" aria-label="Patch is already searching">
+          <p className="busy-prompt__text">
+            {busyPrompt.activeTargetText
+              ? `Patch is already looking for "${busyPrompt.activeTargetText}".`
+              : 'Patch is already on another search.'}{' '}
+            Stop that search and start this one?
+          </p>
+          <div className="busy-prompt__actions">
+            <button
+              type="button"
+              className="busy-prompt__button busy-prompt__button--primary"
+              onClick={() => submitSearch(true)}
+              disabled={submitting}
+            >
+              Stop it and start this one
+            </button>
+            {busyPrompt.activeSearchId && (
+              <button
+                type="button"
+                className="busy-prompt__button"
+                onClick={() => navigate(`/search/${busyPrompt.activeSearchId}`)}
+              >
+                View current search
+              </button>
+            )}
+            <button type="button" className="busy-prompt__button" onClick={() => setBusyPrompt(null)}>
+              Never mind
+            </button>
+          </div>
+        </div>
+      )}
 
       {error && <p className="form-error">{error}</p>}
     </main>

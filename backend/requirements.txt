@@ -8,4 +8,14 @@ pillow
 python-multipart
 openai
 httpx
-ultralytics
+
+# --- optional, install separately where you want them ------------------------
+# Local YOLO screening (pulls in torch -- large, slow to install on the Pi).
+# The backend runs without it: app/services/yolo_detector.py imports it lazily,
+# and when it is missing the rover asks OMNI on every stop instead.
+#   pip install ultralytics
+#
+# Real motors on the Pi (MOTOR_DRIVER=gpio); not needed for MOTOR_DRIVER=sim.
+#   pip install gpiozero lgpio
+#
+# Tests: pip install -r requirements-dev.txt

@@ -3,6 +3,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from app.config import settings
@@ -34,7 +35,11 @@ async def transcribe(audio: UploadFile = File(...)) -> TranscribeResponse:
     audio_format = Path(audio.filename or "").suffix.lstrip(".").lower() or "webm"
 
     try:
-        result = transcribe_audio(audio_bytes, audio_format)
+        # Off the event loop: transcribe_audio() is a blocking network call that
+        # takes seconds, and the rover's stop endpoints (/api/rover/stop,
+        # /api/drive, /api/drive/stop, cancel) run inline on this loop. Called
+        # directly here, every stop would wait for the transcription to finish.
+        result = await run_in_threadpool(transcribe_audio, audio_bytes, audio_format)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"transcription failed: {exc}") from exc
 

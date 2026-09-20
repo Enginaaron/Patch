@@ -2,13 +2,14 @@ import queue
 import threading
 from typing import Any
 
-# Bridges the background SearchWorker thread (Spec 12) to the async SSE
+# Bridges the rover controller's mission thread (app/rover/controller.py,
+# which replaced the per-search SearchWorker thread of Spec 12) to the SSE
 # endpoint (Spec 13). A plain thread-safe queue.Queue per subscriber --
-# publish() is called from the worker's own thread and just needs to hand
-# events off without blocking it; the SSE generator (a sync generator, same
-# pattern as the existing MJPEG stream) blocks on its own queue with a
-# timeout, which is fine since StreamingResponse runs sync generators in a
-# thread, not on the asyncio event loop.
+# publish() is called from the mission thread (or from an API call that
+# stops / cancels / answers a candidate) and just needs to hand events off
+# without blocking. The SSE generator in routers/searches.py is async: it
+# polls its queue with get_nowait() from the event loop instead of blocking
+# a threadpool thread per open search page.
 
 
 class SearchEventBus:

@@ -73,22 +73,46 @@ Endpoints:
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `POST` | `/api/drive` | Manual teleop: `{command, speed}` where command is `forward`, `backward`, `turn_left`, `turn_right`, `veer_left`, `veer_right`, `stop`. Cancels any running search. |
-| `POST` | `/api/drive/stop` | Stop the wheels. |
+| `POST` | `/api/drive` | Manual teleop: `{command, speed}` where command is `forward`, `backward`, `turn_left`, `turn_right`, `veer_left`, `veer_right`, `stop`. Ends the running autonomous mission (manual control wins); auto-stops after `DRIVE_MANUAL_TTL_SECONDS` unless re-sent. |
+| `POST` | `/api/drive/stop` | Stop the wheels (also ends the running mission). |
 | `GET`  | `/api/drive/state` | Current command + wheel speeds. |
-| `POST` | `/api/searches/{id}/start-auto` | Start autonomous search for `{target_text}`. |
-| `POST` | `/api/searches/stop-auto` | Stop the search. |
-| `GET`  | `/api/searches/auto-status` | Live phase / message / confidence. |
+| `POST` | `/api/rover/stop` | **E-stop.** Halts the wheels now and ends the running mission; the search itself stays resumable. |
+| `GET`  | `/api/rover/state` | Controller snapshot + drive state + camera health. |
+| `POST` | `/api/searches` | Start a search (form: `target_text`, optional `reference_images`, `replace_active`). `409 rover_busy` while another search owns the rover, `422 needs_clarification` for "the other one". |
+| `GET`  | `/api/searches/{id}` | Search detail: recognition `status`, rover `movement`, pending / accepted candidate, `can_resume`, `terminal`. |
+| `POST` | `/api/searches/{id}/candidates/{candidate_id}/accept` \| `/reject` | Answer "is this it?". Accept → `FOUND` and the rover starts to approach. |
+| `POST` | `/api/searches/{id}/resume` | Continue after a stop, a manual override, a lost target or a restart. Nothing resumes by itself. |
+| `POST` | `/api/searches/{id}/cancel` | Halt the rover first, then mark the search `CANCELLED`. |
+| `GET`  | `/api/searches/{id}/events` | Server-sent events; every message means "refetch the detail". |
 
-**The search loop** (`backend/app/services/search_service.py`) runs closed-loop
-on vision: each tick it grabs the current frame, asks
-`OmniLiveService.locate_target` where the target is (`x`, `size`, `confidence`),
-then steers — rotate to **scan**, turn to **center**, drive to **approach**, and
-**stop** once the target fills enough of the frame. With no OMNI key the locate
-step is simulated so the rover visibly scans, centers, and arrives in demo mode.
+**One controller owns the wheels** (`backend/app/rover/controller.py`; design,
+status/phase mapping and limits in [`docs/AUTONOMY.md`](docs/AUTONOMY.md)). A
+search scans in short turn pulses with the wheels stopped for every look, asks
+the user about a plausible match, and after a "yes" centres on it and
+approaches in short forward pulses until a conservative, camera-based proximity
+check holds. Two things are reported separately: `status` (`FOUND` = the user
+confirmed the identification — never "the rover got there") and
+`movement.phase` (arrival is only ever `arrived`). Manual driving always wins:
+any `/api/drive` command ends the mission, and manual commands carry a
+server-side deadman (`DRIVE_MANUAL_TTL_SECONDS`).
 
-The live screen exposes all of this: a **Controls** panel with a teleop d-pad,
-an **Auto search** toggle, and the live search phase/confidence.
+There are no fabricated detections anywhere near the motors: without an
+`OMNI_API_KEY` the live vision path raises instead of inventing a result. To
+try the whole loop on a laptop use the explicit simulation, which is refused
+unless the motor driver is `sim`:
+
+```bash
+cd backend
+python -m scripts.demo_rover_sim                                   # scripted scenario, PASS/FAIL summary
+ROVER_SIMULATION=true MOTOR_DRIVER=sim uvicorn app.main:app --port 8000   # the real server on a synthetic camera
+```
+
+Everything the simulation shows (poses, turn rates, distances, detections) is
+made up; physical movement has not been verified yet.
+
+The live screen exposes all of this: a **STOP** button, **Cancel search** /
+**Resume**, the candidate question (buttons or hold-to-speak yes/no), the
+movement phase, and a **Controls** panel with a hold-to-drive teleop d-pad.
 
 ## Not wired yet
 

@@ -1,0 +1,6 @@
+# Development / test dependencies. Run the suite from backend/:
+#   python -m pytest tests -q
+# The tests need no camera, network, GPIO, torch or ultralytics. FastAPI's
+# TestClient uses httpx, which requirements.txt already installs.
+-r requirements.txt
+pytest

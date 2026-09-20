@@ -6,10 +6,24 @@
   background: #111;
 }
 
-.live-screen__back {
+/* Back + the rover actions (STOP / Resume / CANCEL SEARCH).
+   They live at the top and sit ABOVE the chat and control panels (z-index 2),
+   which are anchored to the bottom and cover most of a phone screen when
+   open: STOP and CANCEL must never end up underneath something. */
+.live-screen__top-left {
   position: absolute;
   top: calc(16px + env(safe-area-inset-top));
   left: 16px;
+  /* Leaves room for the candidate popup (200px) on the right of a phone. */
+  width: max(110px, min(170px, calc(100vw - 244px)));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  z-index: 3;
+}
+
+.live-screen__back {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -21,15 +35,101 @@
   font: inherit;
   padding: 10px 16px;
   cursor: pointer;
-  z-index: 1;
+}
+
+.live-screen__stop {
+  width: 100%;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 28px;
+  background: #e74c3c;
+  color: white;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  box-sizing: border-box;
+  box-shadow: 0 6px 20px rgba(231, 76, 60, 0.45);
+  /* No double-tap-zoom delay between the finger and the request. */
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.live-screen__stop:active,
+.live-screen__stop--sending {
+  background: #c0392b;
+}
+
+.live-screen__resume {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  border-radius: 28px;
+  background: #2ecc71;
+  color: #08351d;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 12px 14px;
+  cursor: pointer;
+  box-sizing: border-box;
+  touch-action: manipulation;
+}
+
+.live-screen__resume:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.live-screen__cancel {
+  width: 100%;
+  border: none;
+  border-radius: 28px;
+  background: rgba(42, 42, 42, 0.92);
+  color: white;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  padding: 12px 14px;
+  cursor: pointer;
+  box-sizing: border-box;
+  touch-action: manipulation;
+}
+
+.live-screen__cancel:active {
+  background: black;
+}
+
+.live-screen__action-error {
+  margin: 0;
+  background: rgba(42, 42, 42, 0.92);
+  color: #ffb4a9;
+  font-size: 13px;
+  line-height: 1.3;
+  padding: 8px 12px;
+  border-radius: 12px;
 }
 
 .live-screen__popup {
   position: absolute;
   top: calc(16px + env(safe-area-inset-top));
   right: 16px;
-  max-width: 200px;
-  background: rgba(255, 255, 255, 0.5);
+  width: min(200px, calc(100vw - 154px));
+  max-height: calc(100svh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.6);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border-radius: 15px;
@@ -37,12 +137,79 @@
   display: flex;
   flex-direction: column;
   gap: 11px;
-  z-index: 1;
+  /* The question needs an answer before anything else happens, so it also
+     stays above the chat/control panels. */
+  z-index: 3;
+}
+
+.live-screen__sim-tag {
+  align-self: center;
+  background: #f1c40f;
+  color: #3a2f00;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.live-screen__popup-crop {
+  width: 100%;
+  max-height: 140px;
+  object-fit: contain;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+/* The whole frame the match came from, with the box drawn on it (which of
+   two similar items does Patch mean?). Wrapper matches the image box exactly,
+   as BoundingBoxOverlay expects. */
+.live-screen__popup-scene {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.live-screen__popup-scene img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+.live-screen__popup-toggle {
+  align-self: center;
+  margin-top: -6px;
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  color: #2a2a2a;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.live-screen__popup-description {
+  font-size: 13px;
+  line-height: 1.3;
+  color: #2a2a2a;
+  margin: 0;
+  text-align: center;
 }
 
 .live-screen__popup-question {
   font-size: 15px;
   color: black;
+  margin: 0;
+  text-align: center;
+}
+
+.live-screen__popup-caveat {
+  font-size: 12px;
+  line-height: 1.3;
+  color: #6b4e00;
   margin: 0;
   text-align: center;
 }
@@ -85,16 +252,66 @@
   opacity: 0.6;
 }
 
+.popup-mic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: none;
+  border-radius: 15px;
+  background: rgba(42, 42, 42, 0.12);
+  color: #2a2a2a;
+  font: inherit;
+  font-size: 12px;
+  padding: 8px 6px;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.popup-mic--recording {
+  background: #e74c3c;
+  color: white;
+}
+
+.popup-mic:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.live-screen__popup-note {
+  font-size: 12px;
+  line-height: 1.3;
+  margin: 0;
+  text-align: center;
+  color: #2a2a2a;
+}
+
+.live-screen__popup-note--error {
+  color: #c0392b;
+}
+
 .live-screen__bottom {
   position: absolute;
   left: 16px;
-  right: 16px;
-  bottom: calc(16px + env(safe-area-inset-bottom));
+  /* Phones: sit above the row of floating buttons (Controls / Ask Patch),
+     which would otherwise cover the bottom of the card. */
+  bottom: calc(84px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 12px;
   z-index: 1;
+}
+
+.live-screen__offline {
+  background: rgba(42, 42, 42, 0.92);
+  color: #ffb4a9;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 12px;
 }
 
 .live-screen__card {
@@ -105,6 +322,115 @@
   border-radius: 20px;
   padding: 16px;
   box-shadow: inset 0 0 4px 0 rgba(255, 255, 255, 0.25);
+}
+
+.live-screen__card--movement {
+  padding: 12px 16px;
+}
+
+.live-screen__movement-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 8px;
+}
+
+.live-screen__phase {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 10px;
+  background: rgba(42, 42, 42, 0.12);
+  color: #2a2a2a;
+}
+
+.live-screen__phase--scanning,
+.live-screen__phase--checking,
+.live-screen__phase--waiting_for_confirmation,
+.live-screen__phase--centering,
+.live-screen__phase--approaching {
+  background: #f1c40f;
+  color: #3a2f00;
+}
+
+.live-screen__phase--arrived {
+  background: #2ecc71;
+  color: #08351d;
+}
+
+.live-screen__phase--target_lost,
+.live-screen__phase--error {
+  background: #e74c3c;
+  color: white;
+}
+
+.live-screen__movement-message {
+  font-size: 14px;
+  line-height: 1.3;
+  color: black;
+  margin: 8px 0 0;
+}
+
+.live-screen__movement-reason {
+  font-size: 12px;
+  line-height: 1.3;
+  color: #555;
+  margin: 4px 0 0;
+}
+
+.live-screen__progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #2a2a2a;
+  white-space: nowrap;
+}
+
+.live-screen__progress-track {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(42, 42, 42, 0.15);
+  overflow: hidden;
+}
+
+.live-screen__progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: #2ecc71;
+  transition: width 0.3s ease;
+}
+
+.live-screen__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.live-screen__badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(42, 42, 42, 0.1);
+  color: #2a2a2a;
+  white-space: nowrap;
+}
+
+.live-screen__badge--sim {
+  background: #f1c40f;
+  color: #3a2f00;
+}
+
+.live-screen__badge--real {
+  background: #2a2a2a;
+  color: white;
 }
 
 .live-screen__label {
@@ -204,25 +530,6 @@
   z-index: 1;
 }
 
-.live-screen__cancel {
-  width: 100%;
-  border: none;
-  border-radius: 28px;
-  background: rgba(42, 42, 42, 0.92);
-  color: white;
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 16px;
-  cursor: pointer;
-  box-sizing: border-box;
-}
-
-.live-screen__cancel:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .live-screen__target-pill {
   display: flex;
   align-items: center;
@@ -289,4 +596,45 @@
   height: 10px;
   border-radius: 50%;
   background: #ccc;
+}
+
+/* Short screens (small phones, landscape): the movement card matters more
+   than the reference photo and the match-level placeholder. */
+@media (max-height: 740px) {
+  .live-screen__photos,
+  .live-screen__match {
+    display: none;
+  }
+}
+
+/* Wide screens: the floating buttons are no longer on top of the card, and
+   there is room for the actions to sit next to Back in one row. */
+@media (min-width: 700px) {
+  .live-screen__top-left {
+    width: auto;
+    max-width: calc(100vw - 264px);
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .live-screen__stop {
+    width: auto;
+    min-width: 160px;
+    padding: 0 24px;
+  }
+
+  .live-screen__resume,
+  .live-screen__cancel {
+    width: auto;
+    padding: 12px 20px;
+  }
+
+  .live-screen__action-error {
+    flex-basis: 100%;
+  }
+
+  .live-screen__bottom {
+    bottom: calc(16px + env(safe-area-inset-bottom));
+  }
 }

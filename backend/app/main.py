@@ -41,24 +41,69 @@ from app.routers.chat import router as chat_router
 from app.routers.control import router as control_router
 from app.routers.searches import router as searches_router
 from app.routers.speech import router as speech_router
+from app.rover.controller import get_rover_controller, set_rover_controller
 from app.services.bbox import box_2d_to_pixels
 from app.services.camera_service import camera_service
 from app.services.drive_service import drive_service
-from app.services.search_service import search_service
 from app.services.yolo_detector import get_tracking_box
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger(__name__)
+
+
+def _startup() -> None:
+    """Bring the services up. Nothing moves here: no search is resumed by
+    itself. A search that was mid-mission when the backend last stopped is
+    reported as stopped / interrupted (``RoverController.state_for``) and only
+    continues when the user presses resume."""
+    init_db()
+    if settings.rover_simulation:
+        # Laptop demo: a synthetic camera + simulated detections. Refuses
+        # (RuntimeError -> the server does not start) unless MOTOR_DRIVER=sim:
+        # simulated detections must never reach real motors. Must happen
+        # before the camera starts, because the source cannot be swapped while
+        # the capture thread runs.
+        from app.rover.simulation import install_simulation
+
+        install_simulation(camera_service)
+    camera_service.start()
+    drive_service.start()
+    # Build the controller now rather than on the first request: a
+    # misconfiguration fails at startup, and the first /api/rover/stop never
+    # pays for construction. Building it issues no motor command.
+    get_rover_controller()
+
+
+def _shutdown(*, controller_started: bool = True) -> None:
+    """Every step is attempted even when an earlier one fails, so the motors
+    are always released: mission first (so nothing issues another pulse),
+    then the motor driver, then the camera."""
+    steps = [("drive service", drive_service.close), ("camera", camera_service.stop)]
+    if controller_started:
+        steps.insert(0, ("rover controller", lambda: get_rover_controller().shutdown()))
+    for name, step in steps:
+        try:
+            step()
+        except Exception:  # noqa: BLE001 - keep going: the remaining steps still have to run
+            logger.exception("shutdown: %s did not stop cleanly", name)
+    # A shut-down controller refuses new missions; forget it so that a later
+    # startup in the same process (tests, reload) builds a fresh one.
+    set_rover_controller(None)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
-    camera_service.start()
-    drive_service.start()
-    yield
-    search_service.stop()
-    drive_service.close()
-    camera_service.stop()
+    try:
+        _startup()
+    except Exception:
+        # Release whatever did come up (camera thread, motor driver) before
+        # refusing to start.
+        _shutdown(controller_started=False)
+        raise
+    try:
+        yield
+    finally:
+        _shutdown()
 
 
 app = FastAPI(title="Patch", lifespan=lifespan)

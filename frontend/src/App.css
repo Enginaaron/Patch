@@ -192,3 +192,58 @@
   margin: 0;
   text-align: center;
 }
+
+/* Patch asking back ("Which item do you mean?"): a question, not an error. */
+.form-clarify {
+  color: var(--text-h);
+  font-size: 16px;
+  margin: 0;
+  text-align: center;
+}
+
+/* 409 rover_busy: confirm before taking the rover off its current search. */
+.busy-prompt {
+  border: 1px solid var(--text-h);
+  border-radius: 20px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.busy-prompt__text {
+  color: var(--text-h);
+  font-size: 15px;
+  line-height: 1.35;
+  margin: 0;
+  text-align: center;
+}
+
+.busy-prompt__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.busy-prompt__button {
+  border: 1px solid var(--text-h);
+  border-radius: 20px;
+  background: none;
+  color: var(--text-h);
+  font: inherit;
+  font-size: 14px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.busy-prompt__button--primary {
+  border-color: black;
+  background: black;
+  color: white;
+}
+
+.busy-prompt__button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
