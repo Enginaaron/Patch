@@ -1,6 +1,7 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Image, Plus, Search } from 'lucide-react'
 import CameraFeed from '../components/CameraFeed'
+import ChatPanel from '../components/ChatPanel'
 import './SearchPage.css'
 
 interface SearchNavState {
@@ -68,6 +69,8 @@ function SearchPage() {
           </span>
         </div>
       </div>
+
+      <ChatPanel targetText={targetText} />
     </main>
   )
 }

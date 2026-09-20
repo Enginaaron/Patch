@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.db import init_db
+from app.routers.chat import router as chat_router
 from app.routers.searches import router as searches_router
 from app.services.camera_service import camera_service
 
@@ -31,6 +32,7 @@ app.add_middleware(
 )
 
 app.include_router(searches_router)
+app.include_router(chat_router)
 
 
 @app.get("/api/health")
