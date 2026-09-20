@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AlignLeft, ArrowUp, CirclePlus, Mic, X } from 'lucide-react'
 import logoMark from './assets/logo-mark.svg'
+import useVoice from './hooks/useVoice'
 import './App.css'
 
 type ConnectionStatus = 'checking' | 'connected' | 'disconnected'
@@ -21,6 +22,12 @@ function App() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const { isRecording, isTranscribing, startRecording, stopRecording } = useVoice({
+    onTranscript: (transcript) => {
+      if (transcript) setTargetText(transcript)
+    },
+  })
 
   useEffect(() => {
     fetch('/api/health')
@@ -152,10 +159,21 @@ function App() {
           <div className="search-bar__actions-right">
             <button
               type="button"
-              className="icon-button icon-button--circle"
-              aria-label="Voice input"
-              disabled
-              title="Voice input isn't available yet"
+              className={`icon-button icon-button--circle${isRecording ? ' icon-button--recording' : ''}`}
+              aria-label={isRecording ? 'Recording… release to stop' : 'Hold to speak'}
+              title={isTranscribing ? 'Transcribing…' : 'Hold to speak'}
+              disabled={isTranscribing}
+              onMouseDown={startRecording}
+              onMouseUp={stopRecording}
+              onMouseLeave={() => isRecording && stopRecording()}
+              onTouchStart={(e) => {
+                e.preventDefault()
+                startRecording()
+              }}
+              onTouchEnd={(e) => {
+                e.preventDefault()
+                stopRecording()
+              }}
             >
               <Mic size={24} color="white" strokeWidth={1.875} />
             </button>

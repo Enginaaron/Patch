@@ -155,6 +155,20 @@
   background: black;
 }
 
+.icon-button--recording {
+  background: #e74c3c;
+  animation: mic-recording-pulse 1s ease-in-out infinite;
+}
+
+@keyframes mic-recording-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(231, 76, 60, 0);
+  }
+}
+
 .icon-button:disabled {
   opacity: 0.4;
   cursor: not-allowed;

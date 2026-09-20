@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.db import init_db
 from app.routers.searches import router as searches_router
+from app.routers.speech import router as speech_router
 from app.services.camera_service import camera_service
 
 
@@ -34,6 +35,7 @@ app.add_middleware(
 )
 
 app.include_router(searches_router)
+app.include_router(speech_router)
 
 Path(settings.media_root).mkdir(parents=True, exist_ok=True)
 app.mount("/media", StaticFiles(directory=settings.media_root), name="media")

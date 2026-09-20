@@ -7,11 +7,13 @@ backend/data/*.db
 backend/data/items/
 backend/data/searches/
 backend/data/finds/
+backend/data/speech/
 backend/test_assets/
 
 # frontend
 frontend/node_modules/
 frontend/dist/
+frontend/public/dev-bbox-test.jpg
 
 # editors
 .vscode/
