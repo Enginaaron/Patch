@@ -9,6 +9,8 @@ backend/data/searches/
 backend/data/finds/
 backend/data/speech/
 backend/test_assets/
+backend/*.pt
+backend/yolov8n.pt
 
 # frontend
 frontend/node_modules/

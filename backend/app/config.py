@@ -15,5 +15,13 @@ class Settings(BaseSettings):
     omni_base_url: str = "https://yibuapi.com/v1"
     omni_model: str = "qwen3.5-omni-plus"
 
+    # "low" | "medium" | "high" -- minimum SearchDetection.likelihood required
+    # to create a Candidate. Config value so it can be tuned later without a
+    # code change.
+    candidate_likelihood_threshold: str = "high"
+
+    local_detection_enabled: bool = True
+    local_detection_cooldown_seconds: float = 1.25
+
 
 settings = Settings()

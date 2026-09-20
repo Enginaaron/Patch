@@ -7,6 +7,7 @@ from sqlmodel import Session, select
 
 from app.db import get_session
 from app.models import Candidate, CandidateDecision, Item, ReferenceImage, Search, SearchStatus
+from app.services.search_worker import start_worker, stop_worker
 from app.storage import InvalidImageError, save_reference_image
 
 router = APIRouter(prefix="/api")
@@ -133,6 +134,7 @@ async def create_search(
             status=search.status.value,
         )
 
+    start_worker(search.id)
     return response
 
 
@@ -158,4 +160,7 @@ def cancel_search(search_id: str) -> SearchDetailResponse:
         session.commit()
         session.refresh(search)
 
-        return _build_search_detail(session, search)
+        detail = _build_search_detail(session, search)
+
+    stop_worker(search_id)
+    return detail

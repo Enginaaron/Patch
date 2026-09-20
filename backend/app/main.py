@@ -1,3 +1,29 @@
+import os
+
+# Must run before torch/OpenCV are imported anywhere (transitively, via
+# app.services.yolo_detector below) -- these libraries read their thread
+# count from the environment at import/init time. Calling
+# torch.set_num_threads() etc. *after* import was tried first and measured
+# live to have no effect (still ~750% CPU / ~7.5 cores for local YOLO
+# polling alone); setting the env vars before the first import is what
+# actually constrained it.
+os.environ.setdefault("OMP_NUM_THREADS", "2")
+os.environ.setdefault("MKL_NUM_THREADS", "2")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "2")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "2")
+
+# Thread *count* wasn't the actual problem -- reducing the YOLO poll rate
+# from 10Hz to 4Hz made zero measurable difference to CPU usage, which ruled
+# out "too many calls." Working theory: OpenMP/MKL worker threads spin-wait
+# (busy-poll) for a grace period after finishing work before actually
+# sleeping, to avoid wake-up latency for the next call. At any poll rate
+# with gaps shorter than that grace period, the pool never truly goes idle
+# and burns CPU the entire time between calls, not just during them. Forcing
+# an immediate, passive sleep instead of spin-waiting is the standard fix.
+os.environ.setdefault("OMP_WAIT_POLICY", "PASSIVE")
+os.environ.setdefault("KMP_BLOCKTIME", "0")
+
+import logging
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -13,7 +39,11 @@ from app.config import settings
 from app.db import init_db
 from app.routers.searches import router as searches_router
 from app.routers.speech import router as speech_router
+from app.services.bbox import box_2d_to_pixels
 from app.services.camera_service import camera_service
+from app.services.yolo_detector import get_tracking_box
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 @asynccontextmanager
@@ -66,12 +96,34 @@ def debug_camera() -> dict:
     }
 
 
+def _draw_tracking_box(frame, box_2d: list[int]):
+    """Burns the YOLO-detected box (Spec 11) into the stream frame.
+
+    Styled deliberately unlike a hypothetical OMNI-confirmed candidate box
+    (green, "confirmed") -- this cyan "tracking" box means "something
+    detected locally," not "OMNI confirmed this is yours." Those are
+    different claims and must not look the same on screen.
+    """
+    height, width = frame.shape[:2]
+    box = box_2d_to_pixels(box_2d, width, height)
+    frame = frame.copy()
+    color = (255, 255, 0)  # cyan (BGR)
+    cv2.rectangle(frame, (box.left, box.top), (box.right, box.bottom), color, 2)
+    label_y = max(box.top - 8, 12)
+    cv2.putText(frame, "tracking", (box.left, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+    return frame
+
+
 def _mjpeg_frames() -> Iterator[bytes]:
     while True:
         frame = camera_service.get_frame()
         if frame is None:
             time.sleep(0.1)
             continue
+
+        tracking_box = get_tracking_box()
+        if tracking_box is not None:
+            frame = _draw_tracking_box(frame, tracking_box)
 
         ok, buffer = cv2.imencode(".jpg", frame)
         if not ok:
