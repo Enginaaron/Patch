@@ -55,18 +55,21 @@ Pi's 40-pin header.
 
 | TB6612 pin | Wire to | Pi header pin | BCM |
 | --- | --- | --- | --- |
-| VCC | Pi **3V3** | pin 1 | 3.3 V |
-| GND (logic) | Pi **GND** | pin 6 | — |
-| STBY | GPIO25 | pin 22 | 25 |
+| VCC | Pi **3V3** | pin 17 | 3.3 V |
+| GND (logic) | Pi **GND** | pin 34 | — |
+| STBY | GPIO16 | pin 36 | 16 |
 | PWMA | GPIO12 | pin 32 | 12 |
-| AIN1 | GPIO17 | pin 11 | 17 |
-| AIN2 | GPIO27 | pin 13 | 27 |
+| AIN1 | GPIO5 | pin 29 | 5 |
+| AIN2 | GPIO6 | pin 31 | 6 |
 | PWMB | GPIO13 | pin 33 | 13 |
-| BIN1 | GPIO23 | pin 16 | 23 |
-| BIN2 | GPIO24 | pin 18 | 24 |
+| BIN1 | GPIO20 | pin 38 | 20 |
+| BIN2 | GPIO21 | pin 40 | 21 |
 
 These BCM numbers are the defaults in `backend/.env.example`. If you wire to
 different pins, just change the `MOTOR_*` values in `.env` — no code edits.
+
+Existing `.env` files override these defaults: update their pin values to match
+the table above as well.
 
 ## 4. Motor & battery wiring (power side)
 
@@ -115,6 +118,11 @@ sed -i 's/^MOTOR_DRIVER=sim/MOTOR_DRIVER=gpio/' .env   # or edit by hand
 
 ```bash
 python -m scripts.test_motors
+# Individual commands (speed 0..1, duration in seconds):
+python -m scripts.test_motors --command forward --speed 0.4 --duration 1
+python -m scripts.test_motors --command turn_left --speed 0.4 --duration 0.5
+# Laptop-only dry run:
+python -m scripts.test_motors --sim
 ```
 
 It drives each wheel forward/back and then rotates. Confirm:

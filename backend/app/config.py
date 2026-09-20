@@ -33,13 +33,13 @@ class Settings(BaseSettings):
 
     # TB6612FNG pins (BCM numbering), gpio driver only. Each motor uses two
     # direction pins (IN1/IN2) plus a PWM pin; STBY enables the whole chip.
-    motor_standby_pin: int = 25
+    motor_standby_pin: int = 16
     motor_left_pwm_pin: int = 12   # PWMA (hardware-PWM capable)
-    motor_left_in1_pin: int = 17   # AIN1
-    motor_left_in2_pin: int = 27   # AIN2
+    motor_left_in1_pin: int = 5   # AIN1
+    motor_left_in2_pin: int = 6   # AIN2
     motor_right_pwm_pin: int = 13  # PWMB (hardware-PWM capable)
-    motor_right_in1_pin: int = 23  # BIN1
-    motor_right_in2_pin: int = 24  # BIN2
+    motor_right_in1_pin: int = 20  # BIN1
+    motor_right_in2_pin: int = 21  # BIN2
     motor_pwm_hz: int = 1000
     # If a wheel spins the wrong way, flip its invert flag instead of rewiring.
     motor_left_invert: bool = False

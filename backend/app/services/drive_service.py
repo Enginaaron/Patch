@@ -29,13 +29,12 @@ COMMANDS: dict[str, tuple[float, float]] = {
 
 def _make_driver() -> MotorDriver:
     if settings.motor_driver == "gpio":
-        try:
-            from app.motors.gpio import GpioMotorDriver
+        from app.motors.gpio import GpioMotorDriver
 
-            return GpioMotorDriver()
-        except Exception:  # noqa: BLE001
-            logger.exception("GPIO driver failed to init; falling back to sim")
-    return SimMotorDriver()
+        return GpioMotorDriver()
+    if settings.motor_driver == "sim":
+        return SimMotorDriver()
+    raise ValueError(f"Unknown motor driver: {settings.motor_driver!r}")
 
 
 class DriveService:

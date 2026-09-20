@@ -53,6 +53,8 @@ class GpioMotorDriver(MotorDriver):
         speed = max(-1.0, min(1.0, speed))
         if invert:
             speed = -speed
+        # Remove power before changing direction pins.
+        pwm.value = 0
         if speed > 0:
             in1.on()
             in2.off()

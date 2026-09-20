@@ -17,29 +17,49 @@ in .env (no rewiring needed). If the WHEELS are swapped (left cmd moves the
 right wheel), swap the A/B motor output wires on the TB6612.
 """
 
+import argparse
+import math
 import time
 
-from app.services.drive_service import drive_service
+from app.config import settings
+from app.services.drive_service import COMMANDS, drive_service
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Test Patch's two front gearmotors. Lift the wheels first.")
+    parser.add_argument("--sim", action="store_true", help="Log commands without using GPIO")
+    parser.add_argument("--command", choices=["sequence", *COMMANDS], default="sequence")
+    parser.add_argument("--speed", type=float, default=0.4)
+    parser.add_argument("--duration", type=float, default=1.0, help="Seconds per movement (maximum 5)")
+    args = parser.parse_args()
+    if not math.isfinite(args.speed) or not 0 < args.speed <= 1:
+        parser.error("speed must be greater than 0 and at most 1")
+    if not math.isfinite(args.duration) or not 0 < args.duration <= 5:
+        parser.error("duration must be greater than 0 and at most 5 seconds")
+    settings.motor_driver = "sim" if args.sim else "gpio"
     drive_service.start()
     print(f"driver = {drive_service.state()['driver']}")
     steps = [
-        ("LEFT forward", (0.6, 0.0)),
-        ("LEFT backward", (-0.6, 0.0)),
-        ("RIGHT forward", (0.0, 0.6)),
-        ("RIGHT backward", (0.0, -0.6)),
-        ("BOTH forward", (0.6, 0.6)),
-        ("ROTATE in place", (-0.6, 0.6)),
+        ("LEFT forward", (1.0, 0.0)),
+        ("LEFT backward", (-1.0, 0.0)),
+        ("RIGHT forward", (0.0, 1.0)),
+        ("RIGHT backward", (0.0, -1.0)),
+        ("BOTH forward", (1.0, 1.0)),
+        ("BOTH backward", (-1.0, -1.0)),
+        ("TURN left", (-1.0, 1.0)),
+        ("TURN right", (1.0, -1.0)),
     ]
+    if args.command != "sequence":
+        steps = [(args.command, COMMANDS[args.command])]
     try:
         for label, (l, r) in steps:
             print(label)
-            drive_service.set_speeds(l, r, command="test")
-            time.sleep(1.5)
+            drive_service.set_speeds(l * args.speed, r * args.speed, command="test")
+            time.sleep(args.duration)
             drive_service.stop()
             time.sleep(0.6)
+    except KeyboardInterrupt:
+        print("Interrupted; stopping motors.")
     finally:
         drive_service.close()
         print("done")
