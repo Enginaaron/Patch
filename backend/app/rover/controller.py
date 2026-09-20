@@ -1118,7 +1118,7 @@ class RoverController:
             slow = in_slow_zone(before, slow_profile, cfg.slow_zone_fraction)
             wheels = steering.wheels(offset, slow=slow)
             kind = "turn" if wheels.pivot else "forward"
-            duration = cfg.slow_forward_pulse_seconds if slow else cfg.forward_pulse_seconds
+            duration = steering.pulse_seconds(wheels, slow=slow)
             # The current command is held only for this lease, then stopped
             # before recognition. A missing or slow observation cannot extend it.
             duration = min(duration, cfg.lost_target_hold_seconds, MAX_PULSE_SECONDS)

@@ -46,15 +46,35 @@ it resumes outside 15%. Rotation in place starts above normalized error 0.55
 and ends at 0.50. Each nonzero requested wheel command has a 0.30 minimum,
 with a 0.75 maximum. Existing driver calibration and power caps still apply.
 
-Arrival uses the existing category profiles, scaled to 80% of their old size
-thresholds to stop earlier. The arrival latch releases below 70%, avoiding
-boundary chatter. Multiple stationary observations, including OMNI validation,
-are still required. These thresholds are image sizes, not measured centimetres.
+Arrival requires the target to be aligned within the centring deadzone, with
+the wider exit threshold preserving hysteresis. Category profiles use an 80%
+enter scale and 70% exit scale. Multiple stationary observations, including
+OMNI validation, are still required.
+
+The bottle previously reported arrival with only 8.9% frame width. Its height
+alone could satisfy arrival (or slow travel), even though the user measured
+about 7.5 feet of separation. Bottle arrival now requires BOTH width and height;
+touching the bottom edge cannot bypass that requirement. Using apparent width
+inversely proportional to distance, the requested 2-foot stop corresponds to
+`0.089 * 7.5 / 2 = 0.33375`, about 33.4% of frame width. The raw profile divides
+that by the enter scale so the actual entry threshold matches the calibration.
+The slow zone begins around 2.9 feet for this calibration.
+
+This is a rough one-point calibration for this bottle and camera, not measured
+depth. Different bottle sizes, camera zoom, or inaccurate reference distance
+change the physical stopping point. A floor test must verify the result.
+The simulator has its own explicit profile for its 8 cm bottles and synthetic
+62-degree camera; physical calibration boundaries are tested separately.
+
+Straight travel now uses 65% requested wheel power for up to 0.65 seconds.
+Arcs and pivots remain capped at 0.25 seconds, and close-range travel at the
+existing 0.20 seconds and 35% power. This covers more ground between camera
+checks without extending turns or the final approach.
 
 Motion remains **pulse, stop, observe** because the existing recognition path
 requires stationary frames and cloud calls can take seconds. Steering and
 forward travel happen together *within* each pulse. A command is normally held
-for at most `LOST_TARGET_HOLD_SECONDS` (0.25 s); the independent watchdog has
+for at most `LOST_TARGET_HOLD_SECONDS` (0.65 s); the independent watchdog has
 the existing extra margin. If detection disappears during a pulse, that pulse
 ends and no fresh movement is issued without a usable observation. Misses retry
 while stationary, bounded by the existing attempt budget and the new 2 s retry
@@ -76,6 +96,11 @@ and power caps if actual delivered PWM differs from the request.
 | Stops too late | Decrease `ARRIVAL_ENTER_SCALE` | Decrease exit proportionally. Tune category profiles for unusually large/small objects. |
 | Turns too slowly | Increase `STEER_KP` | If saturated, raise `STEER_MAX`; if wheels only twitch, recalibrate the minimum motor command. |
 
+For the calibrated bottle, adjust `BOTTLE_STOP_DISTANCE_FT` instead of the
+generic arrival scale: increase it to stop farther away, decrease it to stop
+closer. Re-measure `BOTTLE_REFERENCE_DISTANCE_FT` and `BOTTLE_REFERENCE_WIDTH`
+if the bottle or camera changes. Shorten the close-range pulse if it overshoots.
+
 ## OMNI speech through the laptop
 
 Click **Enable Patch's voice** once in the webapp. This unlocks browser audio
@@ -93,13 +118,12 @@ announcement selection, chat panel and app entry point.
 
 ## Verification and deployment
 
-Backend: 450 tests passed, including simulated complete missions and new
-steering boundary tests. Frontend: build/lint and the mocked OMNI playback test
-pass. Browser inspection confirms Enable and visible retry/error controls.
-The Pi was switched off during development; these changes have not been
-deployed or physically calibrated. Live OMNI audio has not been auditioned for
-this change because the configured key is on the Pi.
+Backend verification includes simulated complete missions, steering boundaries,
+loss/stop handling, and physical bottle calibration regressions. Frontend and
+OMNI playback were verified with the preceding control-and-voice change;
+this change only affects backend control and tuning. It does not alter detection.
 
-When the Pi is online again, pull main, copy the new `frontend/dist` build to
-`/home/scout/Patch/frontend/dist`, then restart the Patch service. Start a fresh
-search; automatic service startup does not resume a motor mission.
+Deploy by pulling main and restarting the Patch service. Start a fresh search;
+automatic service startup does not resume a motor mission. Confirm the final
+physical separation on the floor before treating the approximate 2-foot target
+as calibrated.

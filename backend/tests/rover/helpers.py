@@ -17,7 +17,7 @@ from sqlmodel import select
 
 from app.db import get_session
 from app.models import Candidate, Find, Item, RoverMovement, Search, SearchStatus
-from app.rover.config import RoverConfig
+from app.rover.config import RoverConfig, SIMULATION_PROXIMITY_PROFILES_JSON
 from app.rover.controller import RoverController
 from app.rover.simulation import RecordingDrive, SimCamera, SimDrive, SimVision, SimWorld
 from app.rover.types import Box, IdentifyResult
@@ -65,7 +65,9 @@ def fast_config(**overrides) -> RoverConfig:
         association_max_size_ratio=2.0,
         # Generous: the margin only bounds a runaway pulse, it never slows a test.
         pulse_watchdog_margin_seconds=0.5,
-        proximity_profiles_json="",
+        # Synthetic 8 cm bottles / 62-degree camera have their own calibration;
+        # the physical rover's measured bottle width is tested in test_steering.
+        proximity_profiles_json=SIMULATION_PROXIMITY_PROFILES_JSON,
         local_detection_enabled=True,
     )
     values.update(overrides)

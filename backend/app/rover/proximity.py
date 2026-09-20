@@ -12,8 +12,9 @@ A single forward RGB camera gives no reliable distance. In particular:
   never counts pulses to decide it has arrived; it only looks at what the
   camera shows after each pulse.
 
-The default numbers below are starting points for a controlled-area demo and
-have NOT been calibrated on the physical rover. Override them with
+Bottle width uses a rough one-point calibration from the physical rover;
+other defaults are uncalibrated starting points for a controlled-area demo.
+Changing the bottle or camera requires recalibration. Override profiles with
 ``ROVER_PROXIMITY_PROFILES_JSON``, e.g. ``{"bottle": {"arrive_width": 0.2}}``.
 """
 
@@ -25,6 +26,7 @@ from dataclasses import dataclass, replace
 from typing import Sequence
 
 from app.rover import geometry
+from app.rover.config import BOTTLE_ARRIVAL_WIDTH
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +40,12 @@ class ProximityProfile:
     # Box bottom this close to the bottom of the frame (0-1000 scale) suggests
     # the object is about to slide under the camera's view.
     bottom_edge: int = 960
+    require_both: bool = False    # Tall/narrow objects must not arrive on height alone.
 
 
 # Keyed by COCO class (what comprehension.resolve_target returns as category).
 DEFAULT_PROFILES: dict[str, ProximityProfile] = {
-    "bottle": ProximityProfile(arrive_width=0.16, arrive_height=0.50),
+    "bottle": ProximityProfile(arrive_width=BOTTLE_ARRIVAL_WIDTH, arrive_height=0.50, require_both=True),
     "cell phone": ProximityProfile(arrive_width=0.22, arrive_height=0.30),
     "remote": ProximityProfile(arrive_width=0.25, arrive_height=0.25),
     "book": ProximityProfile(arrive_width=0.35, arrive_height=0.35),
@@ -99,6 +102,11 @@ def load_profiles(profiles_json: str = "") -> dict[str, ProximityProfile]:
                 valid = False
             else:
                 profile = replace(profile, bottom_edge=edge)
+        if valid and "require_both" in fields:
+            if not isinstance(fields["require_both"], bool):
+                valid = False
+            else:
+                profile = replace(profile, require_both=fields["require_both"])
         if not valid:
             logger.warning("ignoring proximity profile %r: values out of range", name)
             continue
@@ -125,6 +133,8 @@ def arrival_evidence(box: Sequence[int], profile: ProximityProfile) -> bool:
     """
     box_width = geometry.width(box)
     box_height = geometry.height(box)
+    if profile.require_both:
+        return box_width >= profile.arrive_width and box_height >= profile.arrive_height
     if box_width >= profile.arrive_width or box_height >= profile.arrive_height:
         return True
     # Touching the bottom of the frame while already fairly large: the object
@@ -137,6 +147,9 @@ def in_slow_zone(box: Sequence[int], profile: ProximityProfile, fraction: float)
     threshold: the controller then uses shorter, slower forward pulses."""
     if arrival_evidence(box, profile):
         return True
+    if profile.require_both:
+        return (geometry.width(box) >= fraction * profile.arrive_width
+                and geometry.height(box) >= fraction * profile.arrive_height)
     return (
         geometry.width(box) >= fraction * profile.arrive_width
         or geometry.height(box) >= fraction * profile.arrive_height

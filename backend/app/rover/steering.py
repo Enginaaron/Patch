@@ -43,10 +43,27 @@ class ApproachSteering:
                 and 0 < config.arc_turn_fraction < 1
                 and config.steer_kp > 0 and config.steer_max > 0
                 and config.approach_v_max > 0 and config.approach_slow_speed > 0
-                and config.lost_target_hold_seconds > 0 and config.lost_target_timeout_seconds > 0):
+                and config.lost_target_hold_seconds > 0 and config.lost_target_timeout_seconds > 0
+                and config.approach_steering_pulse_seconds > 0):
             raise ValueError("Invalid approach speed, filtering, arrival, or timeout tuning")
 
+    def pulse_seconds(self, wheels: WheelCommand, *, slow: bool) -> float:
+        """Longer travel only when aligned and far away; never extend a turn."""
+        cfg = self.cfg
+        duration = cfg.slow_forward_pulse_seconds if slow else cfg.forward_pulse_seconds
+        if wheels.label != "forward":
+            duration = min(duration, cfg.approach_steering_pulse_seconds)
+        return min(duration, cfg.lost_target_hold_seconds)
+
     def arrival(self, box, profile: ProximityProfile) -> bool:
+        error = abs((box[1] + box[3]) / 1000 - 1.0)
+        # Honor the same alignment latch as straight driving, so the rover
+        # cannot drive past the target inside the steering hysteresis band.
+        centered_limit = (self.cfg.steer_deadzone_exit if self.arriving or self.straight
+                          else self.cfg.steer_deadzone_enter)
+        if error > centered_limit:
+            self.arriving = False
+            return False
         scale = self.cfg.arrival_exit_scale if self.arriving else self.cfg.arrival_enter_scale
         threshold = replace(profile, arrive_width=profile.arrive_width * scale,
                             arrive_height=profile.arrive_height * scale)

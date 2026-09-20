@@ -41,7 +41,7 @@ def test_bottom_edge_rule_needs_a_reasonably_large_box():
 def test_no_universal_size_means_arrived():
     """The same box is arrival evidence for a bottle and nothing of the sort
     for a suitcase."""
-    box = _box(0.20, 0.30)
+    box = _box(0.43, 0.55)
     assert arrival_evidence(box, profile_for("bottle"))
     assert not arrival_evidence(box, profile_for("suitcase"))
 
@@ -59,6 +59,17 @@ def test_defaults_cover_the_screened_categories():
     assert profile_for(None) == DEFAULT_PROFILES["default"]
     assert profile_for("teapot") == DEFAULT_PROFILES["default"]
     assert profile_for("  Bottle ") == DEFAULT_PROFILES["bottle"]
+
+
+def test_tall_distant_bottle_does_not_trigger_slow_creeping():
+    profile = profile_for("bottle")
+    assert not in_slow_zone(_box(0.089, 0.8, ymax=980), profile, 0.7)
+    assert in_slow_zone(_box(0.30, 0.8, ymax=980), profile, 0.7)
+
+
+def test_require_both_override_must_be_boolean():
+    assert load_profiles('{"bottle": {"require_both": "false"}}') == DEFAULT_PROFILES
+    assert load_profiles('{"bottle": {"require_both": false}}')["bottle"].require_both is False
 
 
 def test_json_overrides_merge_with_defaults():

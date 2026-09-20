@@ -100,7 +100,7 @@ class Settings(BaseSettings):
     rover_turn_pulse_max_seconds: float = 0.30
     rover_center_tolerance: float = 0.08    # |box centre - 0.5| under this counts as centred
     rover_forward_speed: float = 0.45
-    rover_forward_pulse_seconds: float = 0.40
+    rover_forward_pulse_seconds: float = 0.65
     rover_slow_forward_speed: float = 0.35
     rover_slow_forward_pulse_seconds: float = 0.20
     rover_slow_zone_fraction: float = 0.7   # slow down once size >= this fraction of the arrival threshold

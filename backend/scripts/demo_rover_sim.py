@@ -70,7 +70,7 @@ def run_demo(speed: float = 8.0, timeout: float = 120.0, out=print) -> bool:
 
     from app.db import get_session, init_db
     from app.models import Candidate, CandidateDecision, Find, Item, Search, SearchStatus
-    from app.rover.config import RoverConfig
+    from app.rover.config import RoverConfig, SIMULATION_PROXIMITY_PROFILES_JSON
     from app.rover.controller import RoverController
     from app.rover.simulation import RecordingDrive, SimCamera, SimDrive, SimVision, SimWorld, build_scenario
     from app.services.event_bus import event_bus
@@ -83,6 +83,9 @@ def run_demo(speed: float = 8.0, timeout: float = 120.0, out=print) -> bool:
     base = RoverConfig()
     cfg = replace(
         base,
+        proximity_profiles_json=SIMULATION_PROXIMITY_PROFILES_JSON,
+        approach_steering_pulse_seconds=base.approach_steering_pulse_seconds / speed,
+        lost_target_hold_seconds=base.lost_target_hold_seconds / speed,
         scan_pulse_seconds=base.scan_pulse_seconds / speed,
         settle_seconds=base.settle_seconds / speed,
         turn_pulse_min_seconds=base.turn_pulse_min_seconds / speed,

@@ -13,7 +13,7 @@ from app.config import settings
 
 # Approach tuning. Error is -1..1 across the image: 0.24 = 12% of frame width.
 # Increase speed for faster travel; reduce it first if the rover overshoots.
-APPROACH_V_MAX = 0.55
+APPROACH_V_MAX = 0.65
 # Proportional differential wheel speed; reduce for left/right oscillation.
 STEER_KP = 0.70
 STEER_MAX = 0.35                 # Raise for stronger turns; capped by wheel limit.
@@ -29,8 +29,18 @@ APPROACH_SLOW_SPEED = 0.35      # Forward speed near arrival; keep >= minimum ef
 ARC_TURN_FRACTION = 0.80        # Keep both wheels forward in an arc; raise for tighter arcs.
 ARRIVAL_ENTER_SCALE = 0.80      # Multiply category size thresholds; lower stops farther away.
 ARRIVAL_EXIT_SCALE = 0.70       # Must drop below this to leave arrival zone; keep < enter.
-LOST_TARGET_HOLD_SECONDS = 0.25 # Maximum in-flight command hold without a new observation.
+# One-point calibration from the user's physical measurement and saved track.
+# Valid for this bottle/camera setup; different bottle widths change the estimate.
+BOTTLE_REFERENCE_DISTANCE_FT = 7.5
+BOTTLE_REFERENCE_WIDTH = 0.089
+BOTTLE_STOP_DISTANCE_FT = 2.0   # Increase to stop farther away; decrease to get closer.
+BOTTLE_ARRIVAL_WIDTH = (BOTTLE_REFERENCE_WIDTH * BOTTLE_REFERENCE_DISTANCE_FT
+                        / BOTTLE_STOP_DISTANCE_FT / ARRIVAL_ENTER_SCALE)
+APPROACH_STEERING_PULSE_SECONDS = 0.25 # Keep turns/arcs short even when straight travel is longer.
+LOST_TARGET_HOLD_SECONDS = 0.65 # Maximum in-flight command hold without a new observation.
 LOST_TARGET_TIMEOUT_SECONDS = 2.0 # Stationary retry window after a miss; lower gives up sooner.
+# The synthetic camera uses 62 degrees FOV and 8 cm bottles, unlike this USB camera.
+SIMULATION_PROXIMITY_PROFILES_JSON = '{"bottle": {"arrive_width": 0.20, "require_both": true}}'
 
 
 @dataclass
@@ -52,6 +62,7 @@ class RoverConfig:
     arrival_exit_scale: float = ARRIVAL_EXIT_SCALE
     lost_target_hold_seconds: float = LOST_TARGET_HOLD_SECONDS
     lost_target_timeout_seconds: float = LOST_TARGET_TIMEOUT_SECONDS
+    approach_steering_pulse_seconds: float = APPROACH_STEERING_PULSE_SECONDS
     # scanning
     turn_speed: float = 0.4
     turn_degrees_per_second: float = 85.0   # approximate, no encoders -- calibrate on the floor
@@ -74,7 +85,7 @@ class RoverConfig:
     turn_pulse_max_seconds: float = 0.30
     center_tolerance: float = 0.08
     forward_speed: float = 0.45
-    forward_pulse_seconds: float = 0.40
+    forward_pulse_seconds: float = 0.65
     slow_forward_speed: float = 0.35
     slow_forward_pulse_seconds: float = 0.20
     slow_zone_fraction: float = 0.7
@@ -131,6 +142,7 @@ class RoverConfig:
             association_max_center_shift=settings.rover_association_max_center_shift,
             association_max_size_ratio=settings.rover_association_max_size_ratio,
             pulse_watchdog_margin_seconds=settings.rover_pulse_watchdog_margin_seconds,
-            proximity_profiles_json=settings.rover_proximity_profiles_json,
+            proximity_profiles_json=(settings.rover_proximity_profiles_json or
+                (SIMULATION_PROXIMITY_PROFILES_JSON if settings.rover_simulation else "")),
             local_detection_enabled=settings.local_detection_enabled,
         )
