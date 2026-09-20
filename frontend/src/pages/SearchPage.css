@@ -24,65 +24,220 @@
   z-index: 1;
 }
 
-.live-screen__popup {
+/* Spec 14: candidate confirmation -- deliberately a full interrupt, not a
+   small corner popup, per "clearly interrupts the normal Searching state." */
+.candidate-overlay {
   position: absolute;
-  top: calc(16px + env(safe-area-inset-top));
-  right: 16px;
-  max-width: 200px;
-  background: rgba(255, 255, 255, 0.5);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border-radius: 15px;
-  padding: 13px;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
   display: flex;
-  flex-direction: column;
-  gap: 11px;
-  z-index: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+  z-index: 2;
 }
 
-.live-screen__popup-question {
-  font-size: 15px;
-  color: black;
+.candidate-card {
+  width: 100%;
+  max-width: 340px;
+  background: white;
+  border-radius: 24px;
+  padding: 24px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.candidate-card__title {
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--text-h, #08060d);
   margin: 0;
   text-align: center;
 }
 
-.live-screen__popup-actions {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
+.candidate-card__crop {
+  width: 160px;
+  height: 160px;
+  object-fit: cover;
+  border-radius: 14px;
+  background: #f4f4f4;
 }
 
-.popup-button {
-  flex: 1;
+.candidate-card__evidence {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #111;
+}
+
+.candidate-card__evidence-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.candidate-card__question {
+  font-size: 16px;
+  color: var(--text-h, #08060d);
+  margin: 0;
+  text-align: center;
+}
+
+.candidate-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.candidate-mic {
+  flex-shrink: 0;
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
   border: none;
-  border-radius: 15px;
-  padding: 8px 0;
-  font: inherit;
-  font-size: 14px;
+  background: #2a2a2a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
 }
 
-.popup-button:disabled {
+.candidate-mic:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
-.popup-button--yes {
-  background: #2a2a2a;
+.candidate-mic--recording {
+  background: #e74c3c;
+  animation: mic-recording-pulse 1s ease-in-out infinite;
+}
+
+@keyframes mic-recording-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(231, 76, 60, 0);
+  }
+}
+
+.candidate-button {
+  flex: 1;
+  border: none;
+  border-radius: 22px;
+  padding: 13px 0;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.candidate-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.candidate-button--reject {
+  background: #f0f0f0;
+  color: #2a2a2a;
+}
+
+.candidate-button--confirm {
+  background: #2ecc71;
   color: white;
 }
 
-.popup-button--yes:disabled {
-  opacity: 0.5;
+/* Spec 16: same full-interrupt overlay pattern as .candidate-overlay. */
+.found-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+  z-index: 2;
 }
 
-.popup-button--no {
+.found-card {
+  width: 100%;
+  max-width: 340px;
   background: white;
-  color: black;
+  border-radius: 24px;
+  padding: 28px 24px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
 }
 
-.popup-button--no:disabled {
-  opacity: 0.6;
+.found-card__eyebrow {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #2ecc71;
+  margin: 0;
+}
+
+.found-card__title {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-h, #08060d);
+  margin: 4px 0 16px;
+  text-align: center;
+}
+
+.found-card__photo {
+  width: 180px;
+  height: 180px;
+  object-fit: cover;
+  border-radius: 14px;
+  background: #f4f4f4;
+  margin-bottom: 18px;
+}
+
+.found-card__found-at-label {
+  font-size: 13px;
+  color: #999;
+  margin: 0;
+}
+
+.found-card__time {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--text-h, #08060d);
+  margin: 2px 0 0;
+}
+
+.found-card__date {
+  font-size: 14px;
+  color: #666;
+  margin: 2px 0 20px;
+}
+
+.found-card__memory {
+  width: 100%;
+  border: none;
+  border-radius: 22px;
+  padding: 14px 0;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  background: #2a2a2a;
+  color: white;
+  cursor: pointer;
 }
 
 .live-screen__bottom {

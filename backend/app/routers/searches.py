@@ -10,7 +10,7 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.db import get_session
-from app.models import Candidate, CandidateDecision, Item, ReferenceImage, Search, SearchStatus
+from app.models import Candidate, CandidateDecision, Find, Item, ReferenceImage, Search, SearchStatus
 from app.services.event_bus import event_bus
 from app.services.search_worker import start_worker, stop_worker
 from app.storage import InvalidImageError, save_reference_image
@@ -36,8 +36,16 @@ class ReferenceImageOut(BaseModel):
 class PendingCandidateOut(BaseModel):
     candidate_id: str
     description: str
+    image_url: str
     crop_url: str
+    box: list[int] | None
     created_at: datetime
+
+
+class FindOut(BaseModel):
+    image_url: str
+    crop_url: str
+    found_at: datetime
 
 
 class SearchDetailResponse(BaseModel):
@@ -49,6 +57,7 @@ class SearchDetailResponse(BaseModel):
     ended_at: datetime | None
     reference_images: list[ReferenceImageOut]
     pending_candidate: PendingCandidateOut | None
+    find: FindOut | None
 
 
 def _build_search_detail(session: Session, search: Search) -> SearchDetailResponse:
@@ -60,6 +69,10 @@ def _build_search_detail(session: Session, search: Search) -> SearchDetailRespon
         select(Candidate)
         .where(Candidate.search_id == search.id, Candidate.decision == CandidateDecision.PENDING)
         .order_by(Candidate.created_at.desc())
+    ).first()
+
+    find = session.exec(
+        select(Find).where(Find.search_id == search.id).order_by(Find.found_at.desc())
     ).first()
 
     return SearchDetailResponse(
@@ -76,10 +89,21 @@ def _build_search_detail(session: Session, search: Search) -> SearchDetailRespon
             PendingCandidateOut(
                 candidate_id=pending.id,
                 description=pending.description,
+                image_url=f"/media/{pending.full_image_path}",
                 crop_url=f"/media/{pending.crop_path}",
+                box=json.loads(pending.bbox_json) if pending.bbox_json else None,
                 created_at=pending.created_at,
             )
             if pending
+            else None
+        ),
+        find=(
+            FindOut(
+                image_url=f"/media/{find.full_image_path}",
+                crop_url=f"/media/{find.crop_path}",
+                found_at=find.found_at,
+            )
+            if find
             else None
         ),
     )
@@ -169,6 +193,91 @@ def cancel_search(search_id: str) -> SearchDetailResponse:
 
     stop_worker(search_id)
     event_bus.publish(search_id, {"type": "search_cancelled", "payload": {"status": "CANCELLED"}})
+    return detail
+
+
+def _get_pending_candidate(session: Session, candidate_id: str) -> Candidate:
+    candidate = session.get(Candidate, candidate_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="candidate not found")
+    if candidate.decision != CandidateDecision.PENDING:
+        raise HTTPException(status_code=409, detail="candidate has already been decided")
+    return candidate
+
+
+# Spec 15 gives an explicit, search-id-free contract for these routes
+# (POST /api/candidates/{candidate_id}/reject). candidate_id is already
+# globally unique, so confirm was moved to match rather than leaving one
+# endpoint nested under /searches/{search_id} and the other flat.
+@router.post("/candidates/{candidate_id}/confirm", response_model=SearchDetailResponse)
+def confirm_candidate(candidate_id: str) -> SearchDetailResponse:
+    """Spec 14/16: 'THAT'S IT' -- identical whether triggered by tap or by the
+    voice keyword match, since both call this same endpoint."""
+    with get_session() as session:
+        candidate = _get_pending_candidate(session, candidate_id)
+
+        search = session.get(Search, candidate.search_id)
+        if search is None:
+            raise HTTPException(status_code=404, detail="search not found")
+
+        candidate.decision = CandidateDecision.ACCEPTED
+        session.add(candidate)
+
+        find = Find(
+            item_id=search.item_id,
+            search_id=search.id,
+            full_image_path=candidate.full_image_path,
+            crop_path=candidate.crop_path,
+        )
+        session.add(find)
+
+        search.status = SearchStatus.FOUND
+        search.ended_at = datetime.utcnow()
+        session.add(search)
+        session.commit()
+        session.refresh(search)
+
+        search_id = search.id
+        detail = _build_search_detail(session, search)
+
+    # The worker already stopped itself when this candidate was created
+    # (Spec 12), but call it explicitly too -- FOUND is terminal, and this
+    # makes "stop the worker" (Spec 16) true regardless of that timing,
+    # rather than relying on an implicit side effect. A no-op if it already
+    # unregistered itself.
+    stop_worker(search_id)
+    event_bus.publish(search_id, {"type": "search_found", "payload": {"status": "FOUND"}})
+    return detail
+
+
+@router.post("/candidates/{candidate_id}/reject", response_model=SearchDetailResponse)
+def reject_candidate(candidate_id: str) -> SearchDetailResponse:
+    """Spec 15: 'NOT MINE' -- identical whether triggered by tap or by the
+    voice keyword match, since both call this same endpoint. The rejected
+    candidate's row (and its crop image on disk) is left untouched -- only
+    its decision flips to REJECTED -- so search_worker._load_recent_rejected_crops
+    can feed it back into subsequent OMNI prompts."""
+    with get_session() as session:
+        candidate = _get_pending_candidate(session, candidate_id)
+
+        search = session.get(Search, candidate.search_id)
+        if search is None:
+            raise HTTPException(status_code=404, detail="search not found")
+
+        candidate.decision = CandidateDecision.REJECTED
+        session.add(candidate)
+
+        search.status = SearchStatus.SEARCHING
+        session.add(search)
+        session.commit()
+        session.refresh(search)
+
+        search_id = search.id
+        detail = _build_search_detail(session, search)
+
+    event_bus.publish(search_id, {"type": "candidate_rejected", "payload": {"candidate_id": candidate_id}})
+    start_worker(search_id)  # resume polling -- the worker stopped itself when this candidate fired
+    event_bus.publish(search_id, {"type": "search_resumed", "payload": {"status": "SEARCHING"}})
     return detail
 
 

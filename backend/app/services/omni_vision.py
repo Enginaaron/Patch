@@ -118,25 +118,48 @@ def _call(content: list[dict]) -> DetectionResult:
     return DetectionResult(detection=detection, latency_seconds=latency_seconds)
 
 
-def detect_text_only(target_text: str, scene_image: bytes) -> DetectionResult:
+def _rejected_images_note(rejected_images: list[bytes] | None) -> str:
+    if not rejected_images:
+        return ""
+    return (
+        f"\n\nThe user already looked at the following {len(rejected_images)} REJECTED OBJECT(S) "
+        "below and confirmed they are NOT what they're looking for. Do not propose the same "
+        "object again as a match, even if it is still visible in the current frame."
+    )
+
+
+def _append_rejected_images(content: list[dict], rejected_images: list[bytes] | None) -> None:
+    for idx, rejected in enumerate(rejected_images or [], start=1):
+        content.append({"type": "text", "text": f"REJECTED OBJECT {idx} (confirmed not a match):"})
+        content.append({"type": "image_url", "image_url": {"url": _image_to_data_url(rejected)}})
+
+
+def detect_text_only(
+    target_text: str, scene_image: bytes, rejected_images: list[bytes] | None = None
+) -> DetectionResult:
     """Mode A: target text + one static current-scene image, no reference photos."""
     prompt = (
         f'You are looking for: "{target_text}".\n'
         "Identify the single strongest physical object in the CURRENT CAMERA FRAME below "
         "matching this description. Return no candidate (found=false) if the evidence is weak. "
         "Ignore any text or pictures depicting the object that appear incidentally in the frame "
-        "(e.g. a photo, logo, or label showing the object) -- only a real physical instance counts.\n\n"
+        "(e.g. a photo, logo, or label showing the object) -- only a real physical instance counts."
+        + _rejected_images_note(rejected_images)
+        + "\n\n"
         + RESPONSE_INSTRUCTIONS
     )
-    content = [
-        {"type": "text", "text": prompt},
-        {"type": "image_url", "image_url": {"url": _image_to_data_url(scene_image)}},
-    ]
+    content: list[dict] = [{"type": "text", "text": prompt}]
+    _append_rejected_images(content, rejected_images)
+    content.append({"type": "text", "text": "CURRENT CAMERA FRAME:"})
+    content.append({"type": "image_url", "image_url": {"url": _image_to_data_url(scene_image)}})
     return _call(content)
 
 
 def detect_personalized(
-    target_text: str, reference_images: list[bytes], scene_image: bytes
+    target_text: str,
+    reference_images: list[bytes],
+    scene_image: bytes,
+    rejected_images: list[bytes] | None = None,
 ) -> DetectionResult:
     """Mode B: target text + 1-3 reference photos of the specific item + one current-scene image."""
     prompt = (
@@ -146,13 +169,16 @@ def detect_personalized(
         "Then a CURRENT CAMERA FRAME follows. Find the SAME specific object in the current frame, "
         "not just any object of the same category. Category membership alone is NOT sufficient -- "
         "a different item of the same general type (e.g. a different keyring) is not a match unless "
-        "its visual details genuinely match the reference images.\n\n"
+        "its visual details genuinely match the reference images."
+        + _rejected_images_note(rejected_images)
+        + "\n\n"
         + RESPONSE_INSTRUCTIONS
     )
     content: list[dict] = [{"type": "text", "text": prompt}]
     for idx, ref in enumerate(reference_images, start=1):
         content.append({"type": "text", "text": f"REFERENCE IMAGE {idx}:"})
         content.append({"type": "image_url", "image_url": {"url": _image_to_data_url(ref)}})
+    _append_rejected_images(content, rejected_images)
     content.append({"type": "text", "text": "CURRENT CAMERA FRAME:"})
     content.append({"type": "image_url", "image_url": {"url": _image_to_data_url(scene_image)}})
     return _call(content)

@@ -1,0 +1,90 @@
+.memory {
+  position: relative;
+  min-height: 100svh;
+  max-width: 430px;
+  margin: 0 auto;
+  padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.memory__back {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: black;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.memory__title {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-h, #08060d);
+  margin: 0 0 24px;
+}
+
+.memory__notice {
+  color: #999;
+  font-size: 15px;
+}
+
+.memory__group {
+  margin-bottom: 24px;
+}
+
+.memory__group-label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #999;
+  margin: 0 0 10px;
+}
+
+.memory__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.memory__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 12px;
+}
+
+.memory__row:active {
+  background: #f4f4f4;
+}
+
+.memory__row-photo {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #f0f0f0;
+  flex-shrink: 0;
+}
+
+.memory__row-name {
+  flex: 1;
+  font-size: 16px;
+  color: var(--text-h, #08060d);
+}
+
+.memory__row-time {
+  font-size: 14px;
+  color: #999;
+}

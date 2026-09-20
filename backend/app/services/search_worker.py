@@ -35,6 +35,10 @@ YOLO_POLL_INTERVAL_SECONDS = 0.2
 
 _LIKELIHOOD_ORDER = {"low": 0, "medium": 1, "high": 2}
 
+# Spec 15: how many of the most-recently-rejected crops get fed back into
+# subsequent OMNI prompts as "don't suggest this again" context.
+REJECTED_CONTEXT_LIMIT = 2
+
 _active_workers: dict[str, "SearchWorker"] = {}
 _registry_lock = threading.Lock()
 
@@ -88,6 +92,19 @@ def _meets_threshold(likelihood: str) -> bool:
     return _LIKELIHOOD_ORDER[likelihood] >= _LIKELIHOOD_ORDER[settings.candidate_likelihood_threshold]
 
 
+def _load_recent_rejected_crops(search_id: str) -> list[bytes]:
+    with get_session() as session:
+        rejected = session.exec(
+            select(Candidate)
+            .where(Candidate.search_id == search_id, Candidate.decision == CandidateDecision.REJECTED)
+            .order_by(Candidate.created_at.desc())
+            .limit(REJECTED_CONTEXT_LIMIT)
+        ).all()
+        crop_paths = [c.crop_path for c in rejected]
+
+    return [Path(settings.media_root, p).read_bytes() for p in crop_paths]
+
+
 class SearchWorker:
     """Polls the shared camera frame for one Search and calls OMNI at most
     once every AI_SAMPLE_INTERVAL_SECONDS. Strictly sequential -- the loop
@@ -111,6 +128,11 @@ class SearchWorker:
         self._stop_event.set()
 
     def _run(self) -> None:
+        # _tracking_box is a single global (yolo_detector.py), not scoped to
+        # this search -- clear it before dispatching so a newly-started
+        # search never renders a stale box left behind by whichever search
+        # last used the YOLO-gated path, including one that isn't this one.
+        set_tracking_box(None)
         try:
             search_info = self._load_search_info()
             if search_info is None:
@@ -230,12 +252,16 @@ class SearchWorker:
             logger.exception("frame prep failed for search %s", self.search_id)
             return False
 
+        rejected_images = _load_recent_rejected_crops(self.search_id) or None
+
         try:
             if reference_paths:
                 reference_bytes = [Path(settings.media_root, p).read_bytes() for p in reference_paths]
-                result = detect_personalized(target_text, reference_bytes, scene_jpeg)
+                result = detect_personalized(
+                    target_text, reference_bytes, scene_jpeg, rejected_images=rejected_images
+                )
             else:
-                result = detect_text_only(target_text, scene_jpeg)
+                result = detect_text_only(target_text, scene_jpeg, rejected_images=rejected_images)
         except Exception as exc:
             logger.exception("OMNI detection call failed for search %s", self.search_id)
             event_bus.publish(
@@ -246,12 +272,13 @@ class SearchWorker:
 
         self._call_count += 1
         logger.info(
-            "search %s: OMNI call #%d complete in %.2fs (found=%s likelihood=%s)",
+            "search %s: OMNI call #%d complete in %.2fs (found=%s likelihood=%s, rejected_context=%d)",
             self.search_id,
             self._call_count,
             result.latency_seconds,
             result.detection.found,
             result.detection.likelihood,
+            len(rejected_images or []),
         )
 
         if result.detection.found and _meets_threshold(result.detection.likelihood):
