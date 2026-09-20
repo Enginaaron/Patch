@@ -80,10 +80,16 @@ Endpoints:
 | `GET`  | `/api/rover/state` | Controller snapshot + drive state + camera health. |
 | `POST` | `/api/searches` | Start a search (form: `target_text`, optional `reference_images`, `replace_active`). `409 rover_busy` while another search owns the rover, `422 needs_clarification` for "the other one". |
 | `GET`  | `/api/searches/{id}` | Search detail: recognition `status`, rover `movement`, pending / accepted candidate, `can_resume`, `terminal`. |
-| `POST` | `/api/searches/{id}/candidates/{candidate_id}/accept` \| `/reject` | Answer "is this it?". Accept → `FOUND` and the rover starts to approach. |
+| `POST` | `/api/searches/{id}/candidates/{candidate_id}/accept` \| `/reject` | Answer "is this it?". Accept → `FOUND` and the rover starts to approach. `POST /api/candidates/{candidate_id}/confirm`\|`/reject` are older, search-id-free aliases for the same action (kept for the existing frontend/voice flow) and just delegate to these. |
 | `POST` | `/api/searches/{id}/resume` | Continue after a stop, a manual override, a lost target or a restart. Nothing resumes by itself. |
 | `POST` | `/api/searches/{id}/cancel` | Halt the rover first, then mark the search `CANCELLED`. |
-| `GET`  | `/api/searches/{id}/events` | Server-sent events; every message means "refetch the detail". |
+| `GET`  | `/api/searches/{id}/events` | Server-sent events; every message means "refetch the detail" (also carries `vision_error` / `vision_recovered` — see below). |
+| `GET`  | `/api/finds` | All confirmed finds, newest first (backs the Memory page). |
+| `GET`  | `/api/items/{item_id}` | One taught item: reference photos + its finds, newest first (backs the item detail page). |
+| `POST` | `/api/items/{item_id}/search` | "Find Again" — starts a new search for an already-taught item, reusing its target text and reference photos (nothing re-uploaded or duplicated on disk). |
+| `POST` | `/api/items/{item_id}/quick-check` | One-shot "is it still there" check against an item's reference photos + the current frame. Stateless: no `Search`/`Candidate` row, no SSE event. `400` if the item has no reference photos yet. |
+| `POST` | `/api/speech/transcribe` | Audio → transcript, for the hold-to-speak mic. |
+| `POST` | `/api/speech/synthesize` | Text → spoken audio (fire-and-forget from the frontend; never blocks the UI on itself). |
 
 **One controller owns the wheels** (`backend/app/rover/controller.py`; design,
 status/phase mapping and limits in [`docs/AUTONOMY.md`](docs/AUTONOMY.md)). A
@@ -126,9 +132,27 @@ movement phase, and a **Controls** panel with a hold-to-drive teleop d-pad.
 
 Hold the microphone button on the home page to fill the search field, then
 submit it. On the search page, confirm or reject a candidate by button or voice.
-Speech uses the OMNI transcription/synthesis adapter. The memory gallery keeps
-confirmed finds; item pages support Find Again and a stationary Quick Check.
-Identification and physical arrival are separate states.
+Speech uses the OMNI transcription/synthesis adapter. A failed transcription or
+synthesis call just falls back to the tap-based flow (empty text field / text
+result shown with no spoken output) rather than leaving the user stuck.
+
+The memory gallery (`/memory`) lists confirmed finds newest-first, grouped by
+day; each row opens that item's detail page (`/items/{itemId}`), which shows
+the item's reference photos, its find history, **Find Again** (new search,
+same item and reference photos, nothing re-uploaded), and a stationary
+**Quick Check** — a single vision call against the item's reference photos and
+the current frame, with its own hold-to-speak mic trigger and a spoken
+"yes/not visible" reply, independent of any active search. Identification and
+physical arrival are separate states.
+
+The search loop skips frames that are too blurry to judge (`cv2.Laplacian`
+variance below `BLUR_VARIANCE_THRESHOLD`, default `60.0`) and backs off
+exponentially on repeated OMNI failures — timeout, network error, malformed
+output, invalid box, rate limiting — instead of retrying at full cadence. Its
+SSE stream carries this as nonfatal `vision_error` / `vision_recovered`
+events; the frontend shows "Vision temporarily unavailable. Retrying..." and
+clears it once a call succeeds again. Quick Check is a single one-shot call
+and doesn't retry — a failure there just surfaces as an error response.
 
 Build the frontend on a development machine with `cd frontend && npm ci && npm run build`.
 Copy `frontend/dist/` to the same location in the Pi checkout. FastAPI serves the
