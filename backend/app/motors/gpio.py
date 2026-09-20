@@ -7,15 +7,17 @@ logger = logging.getLogger(__name__)
 
 
 class GpioMotorDriver(MotorDriver):
-    """Differential drive over a two-motor H-bridge (TB6612 / L298N style).
+    """Differential drive over a TB6612FNG dual H-bridge.
 
-    Each wheel has one PWM pin (speed) and one direction pin. This uses
-    ``gpiozero`` (which picks a working pin backend on the Pi) and is imported
-    lazily so nothing here breaks development on a laptop.
+    Each motor channel has two direction pins (INx1/INx2) and one PWM pin. The
+    chip is enabled by driving STBY high. Direction truth table per channel:
 
-    NOTE: pin numbers and direction/enable wiring depend on the final board.
-    Confirm ``MOTOR_*`` pins in ``.env`` and, if the board uses two direction
-    pins per motor (plain L298N) rather than one, adjust ``_set_wheel``.
+        IN1=1 IN2=0 -> forward
+        IN1=0 IN2=1 -> reverse
+        IN1=0 IN2=0 -> coast (stop)
+
+    Speed is the PWM duty on the PWM pin. Uses ``gpiozero`` (which selects the
+    ``lgpio`` backend on a Pi 5) and imports it lazily so laptop dev is fine.
     """
 
     name = "gpio"
@@ -25,28 +27,58 @@ class GpioMotorDriver(MotorDriver):
             from gpiozero import DigitalOutputDevice, PWMOutputDevice
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError(
-                "gpiozero is unavailable — install it on the Pi or use MOTOR_DRIVER=sim"
+                "gpiozero is unavailable — run `pip install gpiozero lgpio` on the "
+                "Pi, or use MOTOR_DRIVER=sim"
             ) from exc
 
         freq = settings.motor_pwm_hz
-        self._left_pwm = PWMOutputDevice(settings.motor_left_pwm_pin, frequency=freq)
-        self._left_dir = DigitalOutputDevice(settings.motor_left_dir_pin)
-        self._right_pwm = PWMOutputDevice(settings.motor_right_pwm_pin, frequency=freq)
-        self._right_dir = DigitalOutputDevice(settings.motor_right_dir_pin)
-        logger.info("GPIO motor driver ready")
+        self._standby = DigitalOutputDevice(settings.motor_standby_pin)
 
-    def _set_wheel(self, pwm, direction, speed: float) -> None:
+        self._left_pwm = PWMOutputDevice(settings.motor_left_pwm_pin, frequency=freq)
+        self._left_in1 = DigitalOutputDevice(settings.motor_left_in1_pin)
+        self._left_in2 = DigitalOutputDevice(settings.motor_left_in2_pin)
+
+        self._right_pwm = PWMOutputDevice(settings.motor_right_pwm_pin, frequency=freq)
+        self._right_in1 = DigitalOutputDevice(settings.motor_right_in1_pin)
+        self._right_in2 = DigitalOutputDevice(settings.motor_right_in2_pin)
+
+        self._left_invert = settings.motor_left_invert
+        self._right_invert = settings.motor_right_invert
+
+        self._standby.on()  # enable the chip
+        self.stop()
+        logger.info("TB6612 GPIO motor driver ready")
+
+    def _set_channel(self, in1, in2, pwm, speed: float, invert: bool) -> None:
         speed = max(-1.0, min(1.0, speed))
-        direction.value = 1 if speed >= 0 else 0
+        if invert:
+            speed = -speed
+        if speed > 0:
+            in1.on()
+            in2.off()
+        elif speed < 0:
+            in1.off()
+            in2.on()
+        else:
+            in1.off()
+            in2.off()
         pwm.value = abs(speed)
 
     def set_speeds(self, left: float, right: float) -> None:
-        self._set_wheel(self._left_pwm, self._left_dir, left)
-        self._set_wheel(self._right_pwm, self._right_dir, right)
+        self._set_channel(self._left_in1, self._left_in2, self._left_pwm, left, self._left_invert)
+        self._set_channel(self._right_in1, self._right_in2, self._right_pwm, right, self._right_invert)
 
     def close(self) -> None:
         self.stop()
-        for dev in (self._left_pwm, self._left_dir, self._right_pwm, self._right_dir):
+        try:
+            self._standby.off()  # disable the chip
+        except Exception:  # noqa: BLE001
+            pass
+        for dev in (
+            self._left_pwm, self._left_in1, self._left_in2,
+            self._right_pwm, self._right_in1, self._right_in2,
+            self._standby,
+        ):
             try:
                 dev.close()
             except Exception:  # noqa: BLE001

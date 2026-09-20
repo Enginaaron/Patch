@@ -61,9 +61,13 @@ pluggable `MotorDriver` (`backend/app/motors/`):
 
 - **`sim` (default):** logs the intended left/right wheel speeds — develop and
   demo the whole loop on a laptop, no hardware needed.
-- **`gpio`:** drives a real differential base over a two-motor H-bridge
-  (TB6612 / L298N style) via `gpiozero`. Set `MOTOR_DRIVER=gpio`, confirm the
-  `MOTOR_*` pins in `.env`, and `pip install gpiozero` on the Pi.
+- **`gpio`:** drives the real base — a TB6612FNG dual H-bridge on a Raspberry
+  Pi 5 — via `gpiozero`. Set `MOTOR_DRIVER=gpio`, confirm the `MOTOR_*` pins in
+  `.env`, and `pip install gpiozero lgpio` on the Pi.
+
+**Building the physical rover** (parts, TB6612 ↔ Pi wiring table, battery/power,
+flashing, and a motor-test script) is documented in
+[`docs/HARDWARE.md`](docs/HARDWARE.md).
 
 Endpoints:
 

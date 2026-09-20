@@ -27,15 +27,23 @@ class Settings(BaseSettings):
     elevenlabs_voice_id: str = ""
 
     # Drive / motors. "sim" logs intended wheel speeds and needs no hardware;
-    # "gpio" drives a real differential base once the wiring is finalized.
+    # "gpio" drives the real TB6612FNG differential base.
     motor_driver: str = "sim"  # "sim" | "gpio"
     drive_max_speed: float = 1.0  # ceiling applied to every command, 0..1
-    # BCM pin numbers for a two-motor H-bridge (e.g. TB6612/L298N), gpio driver only.
-    motor_left_pwm_pin: int = 12
-    motor_left_dir_pin: int = 5
-    motor_right_pwm_pin: int = 13
-    motor_right_dir_pin: int = 6
+
+    # TB6612FNG pins (BCM numbering), gpio driver only. Each motor uses two
+    # direction pins (IN1/IN2) plus a PWM pin; STBY enables the whole chip.
+    motor_standby_pin: int = 25
+    motor_left_pwm_pin: int = 12   # PWMA (hardware-PWM capable)
+    motor_left_in1_pin: int = 17   # AIN1
+    motor_left_in2_pin: int = 27   # AIN2
+    motor_right_pwm_pin: int = 13  # PWMB (hardware-PWM capable)
+    motor_right_in1_pin: int = 23  # BIN1
+    motor_right_in2_pin: int = 24  # BIN2
     motor_pwm_hz: int = 1000
+    # If a wheel spins the wrong way, flip its invert flag instead of rewiring.
+    motor_left_invert: bool = False
+    motor_right_invert: bool = False
 
     # Autonomous search tuning.
     search_interval_seconds: float = 0.6  # how often the loop looks + steers
